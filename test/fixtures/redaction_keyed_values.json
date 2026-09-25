@@ -1,0 +1,2270 @@
+[
+ {
+  "key": "aws_secret_access_key",
+  "shape": "eq",
+  "text": "aws_secret_access_key=test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "colon",
+  "text": "aws_secret_access_key: test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_secret_access_key: [REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key: [REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "json",
+  "text": "{\"aws_secret_access_key\": \"test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"aws_secret_access_key\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_secret_access_key\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "json-compact",
+  "text": "{\"aws_secret_access_key\":\"test-value-not-a-credential-0123\",\"r\":\"x\"}",
+  "expected": "{\"aws_secret_access_key\":\"[REDACTED: credential]\",\"r\":\"x\"}",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_secret_access_key\":\"[REDACTED]\",\"r\":\"x\"}",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq",
+  "text": "aws_secret_access_key=\"test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "sq",
+  "text": "aws_secret_access_key='test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "aws_secret_access_key='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq-tail",
+  "text": "aws_secret_access_key=\"test-value-not-a-credential-0123 key, rotated\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq-doubled",
+  "text": "aws_secret_access_key=\"test-value-not-a-credential-0123\"\"second-value-not-a-credential-4567\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "sq-doubled",
+  "text": "aws_secret_access_key='test-value-not-a-credential-0123''second-value-not-a-credential-4567'\nnext: line\n",
+  "expected": "aws_secret_access_key='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq-escaped-interior",
+  "text": "aws_secret_access_key=\"test-value-not-a-credential-0123\\\"second-value-not-a-credential-4567\" tail\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "unterminated",
+  "text": "aws_secret_access_key=\"test-value-not-a-credential-0123 rest of the line\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "unterminated-eof",
+  "text": "\"aws_secret_access_key\": \"test-value-not-a-credential-0123 tail",
+  "expected": "\"aws_secret_access_key\": \"[REDACTED: credential]\"",
+  "warnings": 1,
+  "expected_mirror": "\"aws_secret_access_key\": \"[REDACTED]\"",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "embedded",
+  "text": "{\"text\": \"aws_secret_access_key=\\\"test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "embedded-json",
+  "text": "{\"text\": \"\\\"aws_secret_access_key\\\": \\\"test-value-not-a-credential-0123\\\"\", \"r\": \"x\"}\n",
+  "expected": "{\"text\": \"\\\"aws_secret_access_key\\\": \\\"[REDACTED: credential]\\\"\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"\\\"aws_secret_access_key\\\": \\\"[REDACTED]\\\"\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "embedded-unterminated",
+  "text": "{\"text\": \"aws_secret_access_key=\\\"test-value-not-a-credential-0123 tail\"}\n",
+  "expected": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "escaped-slash",
+  "text": "aws_secret_access_key=\\/test-val\\/ue-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "escaped-slash-json",
+  "text": "{\"aws_secret_access_key\": \"\\/test-val\\/ue-not-a-credential-0123\"}\n",
+  "expected": "{\"aws_secret_access_key\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_secret_access_key\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "escaped-backslash",
+  "text": "aws_secret_access_key=test-val\\\\ue-not-a-credential-0123 tail\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential] tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED] tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "unicode-escape",
+  "text": "aws_secret_access_key=\"test-val\\u002fue-not-a-credential-0123\" tail\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "newline-head",
+  "text": "{\"aws_secret_access_key\": \"\\ntest-value-not-a-credential-0123\"}\n",
+  "expected": "{\"aws_secret_access_key\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_secret_access_key\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tab-heads-9",
+  "text": "aws_secret_access_key=\"\\t\\t\\t\\t\\t\\t\\t\\t\\ttest-value-not-a-credential-0123\"\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tab-heads-unquoted",
+  "text": "aws_secret_access_key=\\n\\n\\ntest-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "embedded-newline-head",
+  "text": "{\"text\": \"aws_secret_access_key=\\\"\\\\ntest-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq-leading-space",
+  "text": "aws_secret_access_key=\" test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "sq-leading-space",
+  "text": "aws_secret_access_key=' test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "aws_secret_access_key='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq-leading-tab",
+  "text": "aws_secret_access_key=\"\ttest-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "dq-leading-several",
+  "text": "aws_secret_access_key=\"  \t test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "json-leading-space",
+  "text": "{\"aws_secret_access_key\": \"  test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"aws_secret_access_key\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_secret_access_key\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "embedded-leading-space",
+  "text": "{\"text\": \"aws_secret_access_key=\\\" test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-filled",
+  "text": "aws_secret_access_key=[REDACTED: credential]\nnext: line\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential]\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "aws_secret_access_key=[REDACTED: credential]\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-filled-quoted",
+  "text": "aws_secret_access_key=\"[REDACTED: credential]\" # note\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\" # note\n",
+  "warnings": 0,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED: credential]\" # note\n",
+  "live": false
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-run",
+  "text": "aws_secret_access_key=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "warnings": 0,
+  "expected_mirror": "aws_secret_access_key=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "live": false
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-filled-embedded",
+  "text": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "expected": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 0,
+  "expected_mirror": "{\"text\": \"aws_secret_access_key=\\\"[REDACTED: credential]\\\"\"}\n",
+  "live": false
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-glued",
+  "text": "aws_secret_access_key=[REDACTED: credential]test-value-not-a-credential-0123\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-heading-quoted",
+  "text": "aws_secret_access_key=\"[REDACTED: credential] test-value-not-a-credential-0123\"\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-doubled-close",
+  "text": "aws_secret_access_key='[REDACTED: credential]''test-value-not-a-credential-0123'\n",
+  "expected": "aws_secret_access_key='[REDACTED: credential]'\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key='[REDACTED]'\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-other-quote-close",
+  "text": "aws_secret_access_key=\"[REDACTED: credential]'test-value-not-a-credential-0123'\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-escaped-glued",
+  "text": "aws_secret_access_key=[REDACTED: credential]\\/test-value-not-a-credential-0123\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-lowercase",
+  "text": "aws_secret_access_key=[redacted: credential]\n",
+  "expected": "aws_secret_access_key=[REDACTED: credential] credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=[REDACTED] credential]\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "tag-with-head",
+  "text": "aws_secret_access_key=\"\\n[REDACTED: credential]\"\n",
+  "expected": "aws_secret_access_key=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "empty-value",
+  "text": "aws_secret_access_key=\nnext: line\n",
+  "expected": "aws_secret_access_key=\n[REDACTED: credential] line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_secret_access_key=\n[REDACTED] line\n",
+  "live": true
+ },
+ {
+  "key": "aws_secret_access_key",
+  "shape": "empty-quoted",
+  "text": "aws_secret_access_key=\"\"\nnext: line\n",
+  "expected": "aws_secret_access_key=\"\"\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "aws_secret_access_key=\"\"\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "eq",
+  "text": "SecretAccessKey=test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "SecretAccessKey=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "colon",
+  "text": "SecretAccessKey: test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "SecretAccessKey: [REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey: [REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "json",
+  "text": "{\"SecretAccessKey\": \"test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"SecretAccessKey\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SecretAccessKey\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "json-compact",
+  "text": "{\"SecretAccessKey\":\"test-value-not-a-credential-0123\",\"r\":\"x\"}",
+  "expected": "{\"SecretAccessKey\":\"[REDACTED: credential]\",\"r\":\"x\"}",
+  "warnings": 1,
+  "expected_mirror": "{\"SecretAccessKey\":\"[REDACTED]\",\"r\":\"x\"}",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq",
+  "text": "SecretAccessKey=\"test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "sq",
+  "text": "SecretAccessKey='test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "SecretAccessKey='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq-tail",
+  "text": "SecretAccessKey=\"test-value-not-a-credential-0123 key, rotated\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq-doubled",
+  "text": "SecretAccessKey=\"test-value-not-a-credential-0123\"\"second-value-not-a-credential-4567\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "sq-doubled",
+  "text": "SecretAccessKey='test-value-not-a-credential-0123''second-value-not-a-credential-4567'\nnext: line\n",
+  "expected": "SecretAccessKey='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq-escaped-interior",
+  "text": "SecretAccessKey=\"test-value-not-a-credential-0123\\\"second-value-not-a-credential-4567\" tail\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "unterminated",
+  "text": "SecretAccessKey=\"test-value-not-a-credential-0123 rest of the line\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "unterminated-eof",
+  "text": "\"SecretAccessKey\": \"test-value-not-a-credential-0123 tail",
+  "expected": "\"SecretAccessKey\": \"[REDACTED: credential]\"",
+  "warnings": 1,
+  "expected_mirror": "\"SecretAccessKey\": \"[REDACTED]\"",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "embedded",
+  "text": "{\"text\": \"SecretAccessKey=\\\"test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SecretAccessKey=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "embedded-json",
+  "text": "{\"text\": \"\\\"SecretAccessKey\\\": \\\"test-value-not-a-credential-0123\\\"\", \"r\": \"x\"}\n",
+  "expected": "{\"text\": \"\\\"SecretAccessKey\\\": \\\"[REDACTED: credential]\\\"\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"\\\"SecretAccessKey\\\": \\\"[REDACTED]\\\"\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "embedded-unterminated",
+  "text": "{\"text\": \"SecretAccessKey=\\\"test-value-not-a-credential-0123 tail\"}\n",
+  "expected": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SecretAccessKey=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "escaped-slash",
+  "text": "SecretAccessKey=\\/test-val\\/ue-not-a-credential-0123\nnext: line\n",
+  "expected": "SecretAccessKey=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "escaped-slash-json",
+  "text": "{\"SecretAccessKey\": \"\\/test-val\\/ue-not-a-credential-0123\"}\n",
+  "expected": "{\"SecretAccessKey\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SecretAccessKey\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "escaped-backslash",
+  "text": "SecretAccessKey=test-val\\\\ue-not-a-credential-0123 tail\n",
+  "expected": "SecretAccessKey=[REDACTED: credential] tail\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED] tail\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "unicode-escape",
+  "text": "SecretAccessKey=\"test-val\\u002fue-not-a-credential-0123\" tail\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "newline-head",
+  "text": "{\"SecretAccessKey\": \"\\ntest-value-not-a-credential-0123\"}\n",
+  "expected": "{\"SecretAccessKey\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SecretAccessKey\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tab-heads-9",
+  "text": "SecretAccessKey=\"\\t\\t\\t\\t\\t\\t\\t\\t\\ttest-value-not-a-credential-0123\"\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tab-heads-unquoted",
+  "text": "SecretAccessKey=\\n\\n\\ntest-value-not-a-credential-0123\nnext: line\n",
+  "expected": "SecretAccessKey=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "embedded-newline-head",
+  "text": "{\"text\": \"SecretAccessKey=\\\"\\\\ntest-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SecretAccessKey=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq-leading-space",
+  "text": "SecretAccessKey=\" test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "sq-leading-space",
+  "text": "SecretAccessKey=' test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "SecretAccessKey='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq-leading-tab",
+  "text": "SecretAccessKey=\"\ttest-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "dq-leading-several",
+  "text": "SecretAccessKey=\"  \t test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "json-leading-space",
+  "text": "{\"SecretAccessKey\": \"  test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"SecretAccessKey\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SecretAccessKey\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "embedded-leading-space",
+  "text": "{\"text\": \"SecretAccessKey=\\\" test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SecretAccessKey=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-filled",
+  "text": "SecretAccessKey=[REDACTED: credential]\nnext: line\n",
+  "expected": "SecretAccessKey=[REDACTED: credential]\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "SecretAccessKey=[REDACTED: credential]\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-filled-quoted",
+  "text": "SecretAccessKey=\"[REDACTED: credential]\" # note\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\" # note\n",
+  "warnings": 0,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED: credential]\" # note\n",
+  "live": false
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-run",
+  "text": "SecretAccessKey=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "expected": "SecretAccessKey=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "warnings": 0,
+  "expected_mirror": "SecretAccessKey=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "live": false
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-filled-embedded",
+  "text": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "expected": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 0,
+  "expected_mirror": "{\"text\": \"SecretAccessKey=\\\"[REDACTED: credential]\\\"\"}\n",
+  "live": false
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-glued",
+  "text": "SecretAccessKey=[REDACTED: credential]test-value-not-a-credential-0123\n",
+  "expected": "SecretAccessKey=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-heading-quoted",
+  "text": "SecretAccessKey=\"[REDACTED: credential] test-value-not-a-credential-0123\"\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-doubled-close",
+  "text": "SecretAccessKey='[REDACTED: credential]''test-value-not-a-credential-0123'\n",
+  "expected": "SecretAccessKey='[REDACTED: credential]'\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey='[REDACTED]'\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-other-quote-close",
+  "text": "SecretAccessKey=\"[REDACTED: credential]'test-value-not-a-credential-0123'\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-escaped-glued",
+  "text": "SecretAccessKey=[REDACTED: credential]\\/test-value-not-a-credential-0123\n",
+  "expected": "SecretAccessKey=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-lowercase",
+  "text": "SecretAccessKey=[redacted: credential]\n",
+  "expected": "SecretAccessKey=[REDACTED: credential] credential]\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=[REDACTED] credential]\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "tag-with-head",
+  "text": "SecretAccessKey=\"\\n[REDACTED: credential]\"\n",
+  "expected": "SecretAccessKey=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "empty-value",
+  "text": "SecretAccessKey=\nnext: line\n",
+  "expected": "SecretAccessKey=\n[REDACTED: credential] line\n",
+  "warnings": 1,
+  "expected_mirror": "SecretAccessKey=\n[REDACTED] line\n",
+  "live": true
+ },
+ {
+  "key": "SecretAccessKey",
+  "shape": "empty-quoted",
+  "text": "SecretAccessKey=\"\"\nnext: line\n",
+  "expected": "SecretAccessKey=\"\"\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "SecretAccessKey=\"\"\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "eq",
+  "text": "aws_session_token=test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_session_token=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "colon",
+  "text": "aws_session_token: test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_session_token: [REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token: [REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "json",
+  "text": "{\"aws_session_token\": \"test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"aws_session_token\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_session_token\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "json-compact",
+  "text": "{\"aws_session_token\":\"test-value-not-a-credential-0123\",\"r\":\"x\"}",
+  "expected": "{\"aws_session_token\":\"[REDACTED: credential]\",\"r\":\"x\"}",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_session_token\":\"[REDACTED]\",\"r\":\"x\"}",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq",
+  "text": "aws_session_token=\"test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "sq",
+  "text": "aws_session_token='test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "aws_session_token='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq-tail",
+  "text": "aws_session_token=\"test-value-not-a-credential-0123 key, rotated\"\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq-doubled",
+  "text": "aws_session_token=\"test-value-not-a-credential-0123\"\"second-value-not-a-credential-4567\"\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "sq-doubled",
+  "text": "aws_session_token='test-value-not-a-credential-0123''second-value-not-a-credential-4567'\nnext: line\n",
+  "expected": "aws_session_token='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq-escaped-interior",
+  "text": "aws_session_token=\"test-value-not-a-credential-0123\\\"second-value-not-a-credential-4567\" tail\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "unterminated",
+  "text": "aws_session_token=\"test-value-not-a-credential-0123 rest of the line\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "unterminated-eof",
+  "text": "\"aws_session_token\": \"test-value-not-a-credential-0123 tail",
+  "expected": "\"aws_session_token\": \"[REDACTED: credential]\"",
+  "warnings": 1,
+  "expected_mirror": "\"aws_session_token\": \"[REDACTED]\"",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "embedded",
+  "text": "{\"text\": \"aws_session_token=\\\"test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_session_token=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "embedded-json",
+  "text": "{\"text\": \"\\\"aws_session_token\\\": \\\"test-value-not-a-credential-0123\\\"\", \"r\": \"x\"}\n",
+  "expected": "{\"text\": \"\\\"aws_session_token\\\": \\\"[REDACTED: credential]\\\"\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"\\\"aws_session_token\\\": \\\"[REDACTED]\\\"\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "embedded-unterminated",
+  "text": "{\"text\": \"aws_session_token=\\\"test-value-not-a-credential-0123 tail\"}\n",
+  "expected": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_session_token=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "escaped-slash",
+  "text": "aws_session_token=\\/test-val\\/ue-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_session_token=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "escaped-slash-json",
+  "text": "{\"aws_session_token\": \"\\/test-val\\/ue-not-a-credential-0123\"}\n",
+  "expected": "{\"aws_session_token\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_session_token\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "escaped-backslash",
+  "text": "aws_session_token=test-val\\\\ue-not-a-credential-0123 tail\n",
+  "expected": "aws_session_token=[REDACTED: credential] tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED] tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "unicode-escape",
+  "text": "aws_session_token=\"test-val\\u002fue-not-a-credential-0123\" tail\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "newline-head",
+  "text": "{\"aws_session_token\": \"\\ntest-value-not-a-credential-0123\"}\n",
+  "expected": "{\"aws_session_token\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_session_token\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tab-heads-9",
+  "text": "aws_session_token=\"\\t\\t\\t\\t\\t\\t\\t\\t\\ttest-value-not-a-credential-0123\"\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tab-heads-unquoted",
+  "text": "aws_session_token=\\n\\n\\ntest-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_session_token=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "embedded-newline-head",
+  "text": "{\"text\": \"aws_session_token=\\\"\\\\ntest-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_session_token=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq-leading-space",
+  "text": "aws_session_token=\" test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "sq-leading-space",
+  "text": "aws_session_token=' test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "aws_session_token='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq-leading-tab",
+  "text": "aws_session_token=\"\ttest-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "dq-leading-several",
+  "text": "aws_session_token=\"  \t test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "json-leading-space",
+  "text": "{\"aws_session_token\": \"  test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"aws_session_token\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_session_token\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "embedded-leading-space",
+  "text": "{\"text\": \"aws_session_token=\\\" test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_session_token=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-filled",
+  "text": "aws_session_token=[REDACTED: credential]\nnext: line\n",
+  "expected": "aws_session_token=[REDACTED: credential]\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "aws_session_token=[REDACTED: credential]\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-filled-quoted",
+  "text": "aws_session_token=\"[REDACTED: credential]\" # note\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\" # note\n",
+  "warnings": 0,
+  "expected_mirror": "aws_session_token=\"[REDACTED: credential]\" # note\n",
+  "live": false
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-run",
+  "text": "aws_session_token=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "expected": "aws_session_token=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "warnings": 0,
+  "expected_mirror": "aws_session_token=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "live": false
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-filled-embedded",
+  "text": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "expected": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 0,
+  "expected_mirror": "{\"text\": \"aws_session_token=\\\"[REDACTED: credential]\\\"\"}\n",
+  "live": false
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-glued",
+  "text": "aws_session_token=[REDACTED: credential]test-value-not-a-credential-0123\n",
+  "expected": "aws_session_token=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-heading-quoted",
+  "text": "aws_session_token=\"[REDACTED: credential] test-value-not-a-credential-0123\"\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-doubled-close",
+  "text": "aws_session_token='[REDACTED: credential]''test-value-not-a-credential-0123'\n",
+  "expected": "aws_session_token='[REDACTED: credential]'\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token='[REDACTED]'\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-other-quote-close",
+  "text": "aws_session_token=\"[REDACTED: credential]'test-value-not-a-credential-0123'\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-escaped-glued",
+  "text": "aws_session_token=[REDACTED: credential]\\/test-value-not-a-credential-0123\n",
+  "expected": "aws_session_token=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-lowercase",
+  "text": "aws_session_token=[redacted: credential]\n",
+  "expected": "aws_session_token=[REDACTED: credential] credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=[REDACTED] credential]\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "tag-with-head",
+  "text": "aws_session_token=\"\\n[REDACTED: credential]\"\n",
+  "expected": "aws_session_token=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "empty-value",
+  "text": "aws_session_token=\nnext: line\n",
+  "expected": "aws_session_token=\n[REDACTED: credential] line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_session_token=\n[REDACTED] line\n",
+  "live": true
+ },
+ {
+  "key": "aws_session_token",
+  "shape": "empty-quoted",
+  "text": "aws_session_token=\"\"\nnext: line\n",
+  "expected": "aws_session_token=\"\"\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "aws_session_token=\"\"\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "SessionToken",
+  "shape": "eq",
+  "text": "SessionToken=test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "SessionToken=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "colon",
+  "text": "SessionToken: test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "SessionToken: [REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken: [REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "json",
+  "text": "{\"SessionToken\": \"test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"SessionToken\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SessionToken\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "json-compact",
+  "text": "{\"SessionToken\":\"test-value-not-a-credential-0123\",\"r\":\"x\"}",
+  "expected": "{\"SessionToken\":\"[REDACTED: credential]\",\"r\":\"x\"}",
+  "warnings": 1,
+  "expected_mirror": "{\"SessionToken\":\"[REDACTED]\",\"r\":\"x\"}",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq",
+  "text": "SessionToken=\"test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "sq",
+  "text": "SessionToken='test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "SessionToken='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq-tail",
+  "text": "SessionToken=\"test-value-not-a-credential-0123 key, rotated\"\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq-doubled",
+  "text": "SessionToken=\"test-value-not-a-credential-0123\"\"second-value-not-a-credential-4567\"\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "sq-doubled",
+  "text": "SessionToken='test-value-not-a-credential-0123''second-value-not-a-credential-4567'\nnext: line\n",
+  "expected": "SessionToken='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq-escaped-interior",
+  "text": "SessionToken=\"test-value-not-a-credential-0123\\\"second-value-not-a-credential-4567\" tail\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "unterminated",
+  "text": "SessionToken=\"test-value-not-a-credential-0123 rest of the line\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "unterminated-eof",
+  "text": "\"SessionToken\": \"test-value-not-a-credential-0123 tail",
+  "expected": "\"SessionToken\": \"[REDACTED: credential]\"",
+  "warnings": 1,
+  "expected_mirror": "\"SessionToken\": \"[REDACTED]\"",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "embedded",
+  "text": "{\"text\": \"SessionToken=\\\"test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SessionToken=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "embedded-json",
+  "text": "{\"text\": \"\\\"SessionToken\\\": \\\"test-value-not-a-credential-0123\\\"\", \"r\": \"x\"}\n",
+  "expected": "{\"text\": \"\\\"SessionToken\\\": \\\"[REDACTED: credential]\\\"\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"\\\"SessionToken\\\": \\\"[REDACTED]\\\"\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "embedded-unterminated",
+  "text": "{\"text\": \"SessionToken=\\\"test-value-not-a-credential-0123 tail\"}\n",
+  "expected": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SessionToken=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "escaped-slash",
+  "text": "SessionToken=\\/test-val\\/ue-not-a-credential-0123\nnext: line\n",
+  "expected": "SessionToken=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "escaped-slash-json",
+  "text": "{\"SessionToken\": \"\\/test-val\\/ue-not-a-credential-0123\"}\n",
+  "expected": "{\"SessionToken\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SessionToken\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "escaped-backslash",
+  "text": "SessionToken=test-val\\\\ue-not-a-credential-0123 tail\n",
+  "expected": "SessionToken=[REDACTED: credential] tail\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED] tail\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "unicode-escape",
+  "text": "SessionToken=\"test-val\\u002fue-not-a-credential-0123\" tail\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "newline-head",
+  "text": "{\"SessionToken\": \"\\ntest-value-not-a-credential-0123\"}\n",
+  "expected": "{\"SessionToken\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SessionToken\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tab-heads-9",
+  "text": "SessionToken=\"\\t\\t\\t\\t\\t\\t\\t\\t\\ttest-value-not-a-credential-0123\"\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tab-heads-unquoted",
+  "text": "SessionToken=\\n\\n\\ntest-value-not-a-credential-0123\nnext: line\n",
+  "expected": "SessionToken=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "embedded-newline-head",
+  "text": "{\"text\": \"SessionToken=\\\"\\\\ntest-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SessionToken=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq-leading-space",
+  "text": "SessionToken=\" test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "sq-leading-space",
+  "text": "SessionToken=' test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "SessionToken='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq-leading-tab",
+  "text": "SessionToken=\"\ttest-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "dq-leading-several",
+  "text": "SessionToken=\"  \t test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "json-leading-space",
+  "text": "{\"SessionToken\": \"  test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"SessionToken\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"SessionToken\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "embedded-leading-space",
+  "text": "{\"text\": \"SessionToken=\\\" test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"SessionToken=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-filled",
+  "text": "SessionToken=[REDACTED: credential]\nnext: line\n",
+  "expected": "SessionToken=[REDACTED: credential]\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "SessionToken=[REDACTED: credential]\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-filled-quoted",
+  "text": "SessionToken=\"[REDACTED: credential]\" # note\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\" # note\n",
+  "warnings": 0,
+  "expected_mirror": "SessionToken=\"[REDACTED: credential]\" # note\n",
+  "live": false
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-run",
+  "text": "SessionToken=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "expected": "SessionToken=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "warnings": 0,
+  "expected_mirror": "SessionToken=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "live": false
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-filled-embedded",
+  "text": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "expected": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 0,
+  "expected_mirror": "{\"text\": \"SessionToken=\\\"[REDACTED: credential]\\\"\"}\n",
+  "live": false
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-glued",
+  "text": "SessionToken=[REDACTED: credential]test-value-not-a-credential-0123\n",
+  "expected": "SessionToken=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-heading-quoted",
+  "text": "SessionToken=\"[REDACTED: credential] test-value-not-a-credential-0123\"\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-doubled-close",
+  "text": "SessionToken='[REDACTED: credential]''test-value-not-a-credential-0123'\n",
+  "expected": "SessionToken='[REDACTED: credential]'\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken='[REDACTED]'\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-other-quote-close",
+  "text": "SessionToken=\"[REDACTED: credential]'test-value-not-a-credential-0123'\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-escaped-glued",
+  "text": "SessionToken=[REDACTED: credential]\\/test-value-not-a-credential-0123\n",
+  "expected": "SessionToken=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-lowercase",
+  "text": "SessionToken=[redacted: credential]\n",
+  "expected": "SessionToken=[REDACTED: credential] credential]\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=[REDACTED] credential]\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "tag-with-head",
+  "text": "SessionToken=\"\\n[REDACTED: credential]\"\n",
+  "expected": "SessionToken=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "empty-value",
+  "text": "SessionToken=\nnext: line\n",
+  "expected": "SessionToken=\n[REDACTED: credential] line\n",
+  "warnings": 1,
+  "expected_mirror": "SessionToken=\n[REDACTED] line\n",
+  "live": true
+ },
+ {
+  "key": "SessionToken",
+  "shape": "empty-quoted",
+  "text": "SessionToken=\"\"\nnext: line\n",
+  "expected": "SessionToken=\"\"\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "SessionToken=\"\"\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "eq",
+  "text": "aws_access_key_id=test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_access_key_id=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "colon",
+  "text": "aws_access_key_id: test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_access_key_id: [REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id: [REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "json",
+  "text": "{\"aws_access_key_id\": \"test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"aws_access_key_id\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_access_key_id\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "json-compact",
+  "text": "{\"aws_access_key_id\":\"test-value-not-a-credential-0123\",\"r\":\"x\"}",
+  "expected": "{\"aws_access_key_id\":\"[REDACTED: credential]\",\"r\":\"x\"}",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_access_key_id\":\"[REDACTED]\",\"r\":\"x\"}",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq",
+  "text": "aws_access_key_id=\"test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "sq",
+  "text": "aws_access_key_id='test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "aws_access_key_id='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq-tail",
+  "text": "aws_access_key_id=\"test-value-not-a-credential-0123 key, rotated\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq-doubled",
+  "text": "aws_access_key_id=\"test-value-not-a-credential-0123\"\"second-value-not-a-credential-4567\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "sq-doubled",
+  "text": "aws_access_key_id='test-value-not-a-credential-0123''second-value-not-a-credential-4567'\nnext: line\n",
+  "expected": "aws_access_key_id='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq-escaped-interior",
+  "text": "aws_access_key_id=\"test-value-not-a-credential-0123\\\"second-value-not-a-credential-4567\" tail\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "unterminated",
+  "text": "aws_access_key_id=\"test-value-not-a-credential-0123 rest of the line\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "unterminated-eof",
+  "text": "\"aws_access_key_id\": \"test-value-not-a-credential-0123 tail",
+  "expected": "\"aws_access_key_id\": \"[REDACTED: credential]\"",
+  "warnings": 1,
+  "expected_mirror": "\"aws_access_key_id\": \"[REDACTED]\"",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "embedded",
+  "text": "{\"text\": \"aws_access_key_id=\\\"test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_access_key_id=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "embedded-json",
+  "text": "{\"text\": \"\\\"aws_access_key_id\\\": \\\"test-value-not-a-credential-0123\\\"\", \"r\": \"x\"}\n",
+  "expected": "{\"text\": \"\\\"aws_access_key_id\\\": \\\"[REDACTED: credential]\\\"\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"\\\"aws_access_key_id\\\": \\\"[REDACTED]\\\"\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "embedded-unterminated",
+  "text": "{\"text\": \"aws_access_key_id=\\\"test-value-not-a-credential-0123 tail\"}\n",
+  "expected": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_access_key_id=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "escaped-slash",
+  "text": "aws_access_key_id=\\/test-val\\/ue-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_access_key_id=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "escaped-slash-json",
+  "text": "{\"aws_access_key_id\": \"\\/test-val\\/ue-not-a-credential-0123\"}\n",
+  "expected": "{\"aws_access_key_id\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_access_key_id\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "escaped-backslash",
+  "text": "aws_access_key_id=test-val\\\\ue-not-a-credential-0123 tail\n",
+  "expected": "aws_access_key_id=[REDACTED: credential] tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED] tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "unicode-escape",
+  "text": "aws_access_key_id=\"test-val\\u002fue-not-a-credential-0123\" tail\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "newline-head",
+  "text": "{\"aws_access_key_id\": \"\\ntest-value-not-a-credential-0123\"}\n",
+  "expected": "{\"aws_access_key_id\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_access_key_id\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tab-heads-9",
+  "text": "aws_access_key_id=\"\\t\\t\\t\\t\\t\\t\\t\\t\\ttest-value-not-a-credential-0123\"\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tab-heads-unquoted",
+  "text": "aws_access_key_id=\\n\\n\\ntest-value-not-a-credential-0123\nnext: line\n",
+  "expected": "aws_access_key_id=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "embedded-newline-head",
+  "text": "{\"text\": \"aws_access_key_id=\\\"\\\\ntest-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_access_key_id=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq-leading-space",
+  "text": "aws_access_key_id=\" test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "sq-leading-space",
+  "text": "aws_access_key_id=' test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "aws_access_key_id='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq-leading-tab",
+  "text": "aws_access_key_id=\"\ttest-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "dq-leading-several",
+  "text": "aws_access_key_id=\"  \t test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "json-leading-space",
+  "text": "{\"aws_access_key_id\": \"  test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"aws_access_key_id\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"aws_access_key_id\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "embedded-leading-space",
+  "text": "{\"text\": \"aws_access_key_id=\\\" test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"aws_access_key_id=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-filled",
+  "text": "aws_access_key_id=[REDACTED: credential]\nnext: line\n",
+  "expected": "aws_access_key_id=[REDACTED: credential]\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "aws_access_key_id=[REDACTED: credential]\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-filled-quoted",
+  "text": "aws_access_key_id=\"[REDACTED: credential]\" # note\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\" # note\n",
+  "warnings": 0,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED: credential]\" # note\n",
+  "live": false
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-run",
+  "text": "aws_access_key_id=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "expected": "aws_access_key_id=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "warnings": 0,
+  "expected_mirror": "aws_access_key_id=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "live": false
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-filled-embedded",
+  "text": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "expected": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 0,
+  "expected_mirror": "{\"text\": \"aws_access_key_id=\\\"[REDACTED: credential]\\\"\"}\n",
+  "live": false
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-glued",
+  "text": "aws_access_key_id=[REDACTED: credential]test-value-not-a-credential-0123\n",
+  "expected": "aws_access_key_id=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-heading-quoted",
+  "text": "aws_access_key_id=\"[REDACTED: credential] test-value-not-a-credential-0123\"\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-doubled-close",
+  "text": "aws_access_key_id='[REDACTED: credential]''test-value-not-a-credential-0123'\n",
+  "expected": "aws_access_key_id='[REDACTED: credential]'\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id='[REDACTED]'\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-other-quote-close",
+  "text": "aws_access_key_id=\"[REDACTED: credential]'test-value-not-a-credential-0123'\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-escaped-glued",
+  "text": "aws_access_key_id=[REDACTED: credential]\\/test-value-not-a-credential-0123\n",
+  "expected": "aws_access_key_id=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-lowercase",
+  "text": "aws_access_key_id=[redacted: credential]\n",
+  "expected": "aws_access_key_id=[REDACTED: credential] credential]\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=[REDACTED] credential]\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "tag-with-head",
+  "text": "aws_access_key_id=\"\\n[REDACTED: credential]\"\n",
+  "expected": "aws_access_key_id=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "empty-value",
+  "text": "aws_access_key_id=\nnext: line\n",
+  "expected": "aws_access_key_id=\n[REDACTED: credential] line\n",
+  "warnings": 1,
+  "expected_mirror": "aws_access_key_id=\n[REDACTED] line\n",
+  "live": true
+ },
+ {
+  "key": "aws_access_key_id",
+  "shape": "empty-quoted",
+  "text": "aws_access_key_id=\"\"\nnext: line\n",
+  "expected": "aws_access_key_id=\"\"\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "aws_access_key_id=\"\"\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "eq",
+  "text": "AccessKeyId=test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "AccessKeyId=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "colon",
+  "text": "AccessKeyId: test-value-not-a-credential-0123\nnext: line\n",
+  "expected": "AccessKeyId: [REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId: [REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "json",
+  "text": "{\"AccessKeyId\": \"test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"AccessKeyId\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"AccessKeyId\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "json-compact",
+  "text": "{\"AccessKeyId\":\"test-value-not-a-credential-0123\",\"r\":\"x\"}",
+  "expected": "{\"AccessKeyId\":\"[REDACTED: credential]\",\"r\":\"x\"}",
+  "warnings": 1,
+  "expected_mirror": "{\"AccessKeyId\":\"[REDACTED]\",\"r\":\"x\"}",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq",
+  "text": "AccessKeyId=\"test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "sq",
+  "text": "AccessKeyId='test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "AccessKeyId='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq-tail",
+  "text": "AccessKeyId=\"test-value-not-a-credential-0123 key, rotated\"\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq-doubled",
+  "text": "AccessKeyId=\"test-value-not-a-credential-0123\"\"second-value-not-a-credential-4567\"\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "sq-doubled",
+  "text": "AccessKeyId='test-value-not-a-credential-0123''second-value-not-a-credential-4567'\nnext: line\n",
+  "expected": "AccessKeyId='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq-escaped-interior",
+  "text": "AccessKeyId=\"test-value-not-a-credential-0123\\\"second-value-not-a-credential-4567\" tail\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "unterminated",
+  "text": "AccessKeyId=\"test-value-not-a-credential-0123 rest of the line\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "unterminated-eof",
+  "text": "\"AccessKeyId\": \"test-value-not-a-credential-0123 tail",
+  "expected": "\"AccessKeyId\": \"[REDACTED: credential]\"",
+  "warnings": 1,
+  "expected_mirror": "\"AccessKeyId\": \"[REDACTED]\"",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "embedded",
+  "text": "{\"text\": \"AccessKeyId=\\\"test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"AccessKeyId=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "embedded-json",
+  "text": "{\"text\": \"\\\"AccessKeyId\\\": \\\"test-value-not-a-credential-0123\\\"\", \"r\": \"x\"}\n",
+  "expected": "{\"text\": \"\\\"AccessKeyId\\\": \\\"[REDACTED: credential]\\\"\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"\\\"AccessKeyId\\\": \\\"[REDACTED]\\\"\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "embedded-unterminated",
+  "text": "{\"text\": \"AccessKeyId=\\\"test-value-not-a-credential-0123 tail\"}\n",
+  "expected": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"AccessKeyId=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "escaped-slash",
+  "text": "AccessKeyId=\\/test-val\\/ue-not-a-credential-0123\nnext: line\n",
+  "expected": "AccessKeyId=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "escaped-slash-json",
+  "text": "{\"AccessKeyId\": \"\\/test-val\\/ue-not-a-credential-0123\"}\n",
+  "expected": "{\"AccessKeyId\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"AccessKeyId\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "escaped-backslash",
+  "text": "AccessKeyId=test-val\\\\ue-not-a-credential-0123 tail\n",
+  "expected": "AccessKeyId=[REDACTED: credential] tail\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED] tail\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "unicode-escape",
+  "text": "AccessKeyId=\"test-val\\u002fue-not-a-credential-0123\" tail\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\" tail\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\" tail\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "newline-head",
+  "text": "{\"AccessKeyId\": \"\\ntest-value-not-a-credential-0123\"}\n",
+  "expected": "{\"AccessKeyId\": \"[REDACTED: credential]\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"AccessKeyId\": \"[REDACTED]\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tab-heads-9",
+  "text": "AccessKeyId=\"\\t\\t\\t\\t\\t\\t\\t\\t\\ttest-value-not-a-credential-0123\"\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tab-heads-unquoted",
+  "text": "AccessKeyId=\\n\\n\\ntest-value-not-a-credential-0123\nnext: line\n",
+  "expected": "AccessKeyId=[REDACTED: credential]\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED]\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "embedded-newline-head",
+  "text": "{\"text\": \"AccessKeyId=\\\"\\\\ntest-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"AccessKeyId=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq-leading-space",
+  "text": "AccessKeyId=\" test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "sq-leading-space",
+  "text": "AccessKeyId=' test-value-not-a-credential-0123'\nnext: line\n",
+  "expected": "AccessKeyId='[REDACTED: credential]'\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId='[REDACTED]'\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq-leading-tab",
+  "text": "AccessKeyId=\"\ttest-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "dq-leading-several",
+  "text": "AccessKeyId=\"  \t test-value-not-a-credential-0123\"\nnext: line\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\nnext: line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\nnext: line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "json-leading-space",
+  "text": "{\"AccessKeyId\": \"  test-value-not-a-credential-0123\", \"r\": \"x\"}\n",
+  "expected": "{\"AccessKeyId\": \"[REDACTED: credential]\", \"r\": \"x\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"AccessKeyId\": \"[REDACTED]\", \"r\": \"x\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "embedded-leading-space",
+  "text": "{\"text\": \"AccessKeyId=\\\" test-value-not-a-credential-0123\\\"\"}\n",
+  "expected": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 1,
+  "expected_mirror": "{\"text\": \"AccessKeyId=\\\"[REDACTED]\\\"\"}\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-filled",
+  "text": "AccessKeyId=[REDACTED: credential]\nnext: line\n",
+  "expected": "AccessKeyId=[REDACTED: credential]\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "AccessKeyId=[REDACTED: credential]\nnext: line\n",
+  "live": false
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-filled-quoted",
+  "text": "AccessKeyId=\"[REDACTED: credential]\" # note\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\" # note\n",
+  "warnings": 0,
+  "expected_mirror": "AccessKeyId=\"[REDACTED: credential]\" # note\n",
+  "live": false
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-run",
+  "text": "AccessKeyId=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "expected": "AccessKeyId=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "warnings": 0,
+  "expected_mirror": "AccessKeyId=[REDACTED: credential][REDACTED: encoded credential]\n",
+  "live": false
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-filled-embedded",
+  "text": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "expected": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "warnings": 0,
+  "expected_mirror": "{\"text\": \"AccessKeyId=\\\"[REDACTED: credential]\\\"\"}\n",
+  "live": false
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-glued",
+  "text": "AccessKeyId=[REDACTED: credential]test-value-not-a-credential-0123\n",
+  "expected": "AccessKeyId=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-heading-quoted",
+  "text": "AccessKeyId=\"[REDACTED: credential] test-value-not-a-credential-0123\"\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-doubled-close",
+  "text": "AccessKeyId='[REDACTED: credential]''test-value-not-a-credential-0123'\n",
+  "expected": "AccessKeyId='[REDACTED: credential]'\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId='[REDACTED]'\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-other-quote-close",
+  "text": "AccessKeyId=\"[REDACTED: credential]'test-value-not-a-credential-0123'\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-escaped-glued",
+  "text": "AccessKeyId=[REDACTED: credential]\\/test-value-not-a-credential-0123\n",
+  "expected": "AccessKeyId=[REDACTED: credential]\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED]\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-lowercase",
+  "text": "AccessKeyId=[redacted: credential]\n",
+  "expected": "AccessKeyId=[REDACTED: credential] credential]\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=[REDACTED] credential]\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "tag-with-head",
+  "text": "AccessKeyId=\"\\n[REDACTED: credential]\"\n",
+  "expected": "AccessKeyId=\"[REDACTED: credential]\"\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\"[REDACTED]\"\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "empty-value",
+  "text": "AccessKeyId=\nnext: line\n",
+  "expected": "AccessKeyId=\n[REDACTED: credential] line\n",
+  "warnings": 1,
+  "expected_mirror": "AccessKeyId=\n[REDACTED] line\n",
+  "live": true
+ },
+ {
+  "key": "AccessKeyId",
+  "shape": "empty-quoted",
+  "text": "AccessKeyId=\"\"\nnext: line\n",
+  "expected": "AccessKeyId=\"\"\nnext: line\n",
+  "warnings": 0,
+  "expected_mirror": "AccessKeyId=\"\"\nnext: line\n",
+  "live": false
+ }
+]

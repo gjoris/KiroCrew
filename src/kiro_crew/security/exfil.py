@@ -40,7 +40,9 @@ from kiro_crew.sel import SecurityEvent, SecurityEventLog
 from .redaction import (
     _contains_fixed_credential,
     _text_contains_bare_secret,
+    _value_is_credential_tag,
     redact_credentials,
+    scan_keyed_value,
 )
 
 if TYPE_CHECKING:
@@ -665,18 +667,58 @@ def _is_safe_presigned(domain: str, query: str) -> bool:
 # the PATH). Distinct from the broader _EXFIL_PATTERNS base64/length heuristics,
 # which stay query-only (long base64 PATH segments — CDN asset ids, git object
 # hashes — are benign).
+#
+# The three LABELLED AWS keys are not in the regex: their value is read by the
+# redactor's own scanner (``scan_keyed_value``) from the anchor below, so the
+# floor and the redactor agree on where a value begins and ends -- bare or
+# quoted, in its own document or inside an enclosing string literal, with every
+# escape and quote rule in one place. A value that IS one of the redactor's own
+# tags (or a run of them) filling its value is exempt and nothing else: the
+# redactor keeps the key that names a value and replaces the value alone, so text
+# it already cleaned reads ``aws_secret_access_key=[REDACTED: credential]`` and
+# would otherwise be a hard credential to every presence-only reader of this
+# floor (the decoded-URL gate below, the packaging scan's
+# ``repo-credential-detector``). The tag test is byte identity, case-sensitive
+# inside this case-insensitive anchor, so a lookalike in another case, a tag
+# with bytes glued to its ``]``, a tag heading a quoted value that continues,
+# or a tag closed by a doubled quote is a value and still a finding.
+_HARD_LABEL_RE = re.compile(
+    r"(?:SecretAccessKey|aws_secret_access_key|SessionToken|aws_session_token"
+    r"|AccessKeyId|aws_access_key_id)(?:\\?[\"'])?\s*[:=]\s*",
+    re.IGNORECASE,
+)
+
 _HARD_CREDENTIAL_RE = re.compile(
     r"(?:"
     f"{AWS_KEY_ID}"  # AWS access key ID (shared spelling: credential_patterns)
-    r'|(?:SecretAccessKey|aws_secret_access_key)["\']?\s*[:=]\s*["\']?[^\s"\',}]+'
-    r'|(?:SessionToken|aws_session_token)["\']?\s*[:=]\s*["\']?[^\s"\',}]+'
-    r'|(?:AccessKeyId|aws_access_key_id)["\']?\s*[:=]\s*["\']?[^\s"\',}]+'
     r"|(?:ssh-rsa|ssh-ed25519)[\s+%]"  # SSH public key
     r"|BEGIN[\s+%](?:RSA|DSA|EC|OPENSSH)[\s+%]PRIVATE[\s+%]KEY"  # private key header
     r"|xox[bpas]-[0-9a-zA-Z-]+"  # Slack token
     r")",
     re.IGNORECASE,
 )
+
+
+def _labelled_credential_at(text: str, at: int) -> bool:
+    """Whether a LIVE labelled value begins at *at* (just past a label's
+    separator): a non-empty value that is not one of the redactor's own tags
+    filling it. One rule for this floor, the packaging scan and the readers."""
+    value = scan_keyed_value(text, at)
+    if value.end <= value.start:
+        return False
+    if _value_is_credential_tag(text, value.start, value.end):
+        return not value.closes
+    return True
+
+
+def hard_credential_hit(text: str) -> bool:
+    """The hard credential floor over *text*: an unambiguous marker (an AWS key
+    id, an SSH or PEM header, a Slack token) or a LABELLED AWS value the
+    redactor's scanner reads as live. Presence-only: the one question a URL
+    path/query, a decoded payload or a packaging line asks."""
+    if _HARD_CREDENTIAL_RE.search(text):
+        return True
+    return any(_labelled_credential_at(text, m.end()) for m in _HARD_LABEL_RE.finditer(text))
 
 
 def _exempt_exact_hosts() -> frozenset[str]:
@@ -911,7 +953,7 @@ def _exfil_url_warning(
         return None
 
     # Hard credential markers are unconditional across the full path/query.
-    if _HARD_CREDENTIAL_RE.search(path_and_query):
+    if hard_credential_hit(path_and_query):
         trace("exfil_hard_credential")
         return f"Suspicious URL with credential in path/query: {domain}"
 
@@ -935,9 +977,7 @@ def _exfil_url_warning(
         if next_payload == decoded_payload:
             break
         decoded_payload = next_payload
-        if _HARD_CREDENTIAL_RE.search(decoded_payload) or _contains_fixed_credential(
-            decoded_payload
-        ):
+        if hard_credential_hit(decoded_payload) or _contains_fixed_credential(decoded_payload):
             trace("exfil_encoded_credential")
             return f"Suspicious URL with encoded credential in path/query: {domain}"
 
@@ -1815,7 +1855,7 @@ def diagnose_oauth_url_credential(
             rule,
             url,
             url,
-            lambda value: bool(_HARD_CREDENTIAL_RE.search(value)),
+            hard_credential_hit,
         )
     if rule == "exfil_fixed_credential":
         return _oauth_url_payload_diagnostic(

@@ -20,6 +20,7 @@ import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 # The AWS key-ID prefix group is taken from ``kiro_crew.credential_patterns`` when
 # that import works, because a second hand-written copy of it is exactly the drift a
@@ -56,24 +57,189 @@ _VENDOR_TOKEN_COMPILED: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (label, re.compile(rf"\b{fragment}\b")) for label, fragment in _VENDOR_TOKEN_PATTERNS
 )
 
-_HARD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+# The redactor keeps the key that names a value and replaces the value alone, so a
+# skill stored already redacted reads ``aws_secret_access_key=[REDACTED: credential]``
+# -- and a labelled pattern that ran on every line, whether or not the canonical
+# detector loads, matched its ``[REDACTED:`` head as the value and aborted the crew
+# build on text that holds no secret. The value is therefore read by a VENDORED copy
+# of the canonical value scanner (``kiro_crew.security.scan_keyed_value``): one
+# tokenizer, one token per step, with the opener, the escaped-whitespace head, the
+# tag run, the escape pair, the doubled quote and the line end as its rules, so the
+# standalone path cannot drift from the canonical one on a quote or escape shape
+# (``test/test_redaction_keyed_value_fixture.py`` pins the two to one generated
+# fixture). A tag run is exempt only where it FILLS the value; a tag heading a
+# quoted value that continues, glued bytes, a tag closed by a doubled quote, or a
+# tag in another case is a value and still a finding. The registry of the
+# redactor's own tags is read from the scrubber so a tag added there reaches here
+# with no edit; the fallback restates the two literals for the standalone case.
+try:  # pragma: no cover - exercised by whichever branch the environment allows
+    from kiro_crew.security import CREDENTIAL_REDACTION_TAGS as _REDACTION_TAGS
+except Exception:  # pragma: no cover
+    _REDACTION_TAGS = ("[REDACTED: credential]", "[REDACTED: encoded credential]")
+
+_LABEL_RE = re.compile(
+    r"(?:SecretAccessKey|aws_secret_access_key|SessionToken|aws_session_token)"
+    r"(?:\\?[\"'])?\s*[:=]\s*",
+    re.IGNORECASE,
+)
+_WS_ESCAPES = frozenset("nrtfv")
+
+
+def _tag_run_end(text: str, i: int) -> int:
+    while True:
+        for tag in _REDACTION_TAGS:
+            if text.startswith(tag, i):
+                i += len(tag)
+                break
+        else:
+            return i
+
+
+def _inner_token(text: str, i: int, escaped: bool, literal_quote: str) -> tuple[str, int]:
+    c = text[i]
+    if c == "\\":
+        if i + 1 >= len(text):
+            return "partial", 1
+        if escaped:
+            nxt = text[i + 1]
+            if nxt == "\\":
+                return "backslash", 2
+            if nxt in "\"'":
+                return "quote", 2
+            if nxt in "nr":
+                return "newline", 2
+            if nxt in "tfv":
+                return "space", 2
+            return "char", 2
+        return "backslash", 1
+    if escaped and c == literal_quote:
+        return "newline", 1
+    if c in "\r\n":
+        return "newline", 1
+    if c.isspace():
+        return "space", 1
+    if c in "\"'":
+        return "quote", 1
+    return "char", 1
+
+
+def _scan_value(text: str, at: int) -> tuple[int, int, bool, str]:
+    """Vendored ``scan_keyed_value``: ``(start, end, closes, opener)`` of the value
+    whose separator ends at *at*. Byte-for-byte the canonical scanner's claim."""
+    n = len(text)
+    opener = ""
+    if at < n and text[at] in "\"'":
+        opener = text[at]
+    elif at + 1 < n and text[at] == "\\" and text[at + 1] in "\"'":
+        opener = text[at : at + 2]
+    escaped = opener.startswith("\\")
+    literal_quote = opener[-1] if opener else ""
+    start = i = at + len(opener)
+    while i < n:  # the head: escaped whitespace, unbounded
+        kind, width = _inner_token(text, i, escaped, literal_quote)
+        if kind != "backslash" or i + width >= n:
+            break
+        letter_kind, letter_width = _inner_token(text, i + width, escaped, literal_quote)
+        if letter_kind != "char" or text[i + width] not in _WS_ESCAPES:
+            break
+        i += width + letter_width
+    if not opener:
+        while i < n:
+            run = _tag_run_end(text, i)
+            if run > i:
+                i = run
+                continue
+            kind, width = _inner_token(text, i, False, "")
+            if kind == "partial":
+                return start, i, True, ""
+            if kind in ("space", "newline", "quote") or (kind == "char" and text[i] in ",}"):
+                return start, i, True, ""
+            if kind == "backslash":
+                if i + 1 >= n:
+                    return start, i, True, ""
+                nxt = text[i + 1]
+                if nxt in "\"'" or nxt.isspace() or nxt in _WS_ESCAPES:
+                    return start, i, True, ""
+                i += 2
+                continue
+            i += width
+        return start, n, True, ""
+    while i < n:
+        run = _tag_run_end(text, i)
+        if run > i:
+            i = run
+            continue
+        kind, width = _inner_token(text, i, escaped, literal_quote)
+        if kind in ("partial", "newline"):
+            return start, i, False, opener
+        if kind == "backslash":
+            j = i + width
+            if j >= n:
+                return start, i, False, opener
+            nxt_kind, nxt_width = _inner_token(text, j, escaped, literal_quote)
+            if nxt_kind == "newline":
+                i = j
+                continue
+            if nxt_kind == "partial":
+                return start, j, False, opener
+            i = j + nxt_width
+            continue
+        if kind == "quote" and text[i : i + width] == opener:
+            j = i + width
+            if j < n and text[j : j + width] == opener:
+                i = j + width
+                continue
+            return start, i, True, opener
+        i += width
+    return start, n, False, opener
+
+
+def _is_tag_run(text: str, start: int, end: int) -> bool:
+    return end > start and _tag_run_end(text, start) == end
+
+
+class _LabelledSecretMatch:
+    """The ``re.Match`` surface the two consumers below read: the matched text."""
+
+    def __init__(self, text: str, start: int, end: int) -> None:
+        self._text, self._start, self._end = text, start, end
+
+    def group(self, _index: int = 0) -> str:
+        return self._text[self._start : self._end]
+
+    def start(self) -> int:
+        return self._start
+
+
+class _LabelledSecretMatcher:
+    """A LABELLED secret: the key naming an AWS secret or session token, its
+    separator, and a LIVE value as the vendored scanner reads it -- a non-empty
+    value that is not a registered tag run filling it. ``search`` returns the
+    first such pair on the line, as a ``re.Pattern`` would."""
+
+    def search(self, text: str) -> _LabelledSecretMatch | None:
+        for label in _LABEL_RE.finditer(text):
+            start, end, closes, _opener = _scan_value(text, label.end())
+            if end <= start:
+                continue
+            if _is_tag_run(text, start, end) and closes:
+                continue
+            return _LabelledSecretMatch(text, label.start(), end)
+        return None
+
+
+_HARD_PATTERNS: tuple[tuple[str, Any], ...] = (
     ("aws-access-key", re.compile(rf"\b(?:{_AWS_KEY_PREFIXES})[0-9A-Z]{{16}}\b")),
     # A LABELLED secret. The pattern above matches an AWS key ID, which has a
     # recognisable prefix; the secret access key is 40 characters of base64 with no
     # prefix at all, so nothing above can see it and `SecretAccessKey=<secret>` in a
     # prompt reached the deployed image. What makes it findable is the label, which is
-    # how this repo's own detector finds it (`security.py:_HARD_CREDENTIAL_RE`,
+    # how this repo's own detector finds it (``security.exfil.hard_credential_hit``,
     # described in security_posture.py as covering "labelled secret-access-key and
-    # session-token forms"). Spelled here from that same shape, and the canonical
-    # module is preferred over it below when importable.
-    (
-        "aws-secret-labelled",
-        re.compile(
-            r"(?:SecretAccessKey|aws_secret_access_key|SessionToken|aws_session_token)"
-            r"[\"']?\s*[:=]\s*[\"']?[^\s\"',}]+",
-            re.IGNORECASE,
-        ),
-    ),
+    # session-token forms"). The value is the vendored scanner's, so the two agree
+    # on every quote and escape shape; the canonical module is preferred below when
+    # importable.
+    ("aws-secret-labelled", _LabelledSecretMatcher()),
     ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----")),
     # The same header after URL or form encoding, where the spaces have become ``+`` or
     # ``%20``. The shared detector spells its separator ``[\s+%]`` for exactly this, and
@@ -124,11 +290,11 @@ class Leak:
 #: fallback that lets this module run without ``kiro_crew`` installed -- the same
 #: bargain ``_AWS_KEY_PREFIXES`` strikes, for the same reason.
 try:  # pragma: no cover - exercised by whichever branch the environment allows
-    from kiro_crew.security import _HARD_CREDENTIAL_RE
+    from kiro_crew.security import hard_credential_hit
 
-    _CANONICAL_CREDENTIAL_RE: re.Pattern[str] | None = _HARD_CREDENTIAL_RE
+    _CANONICAL_CREDENTIAL_HIT: Callable[[str], bool] | None = hard_credential_hit
 except Exception:  # pragma: no cover
-    _CANONICAL_CREDENTIAL_RE = None
+    _CANONICAL_CREDENTIAL_HIT = None
 
 #: The repo's redactor, imported for its ENCODED-credential detection. The patterns above
 #: all match a credential written literally, so a base64 of the same bytes matched none of
@@ -250,18 +416,15 @@ def scan_text(text: str, origin: str) -> list[Leak]:
                 token = m.group(0)
                 snippet = token[:4] + "…(%d chars)" % len(token)
                 leaks.append(Leak(origin=origin, kind=kind, line=lineno, snippet=snippet))
-        if _CANONICAL_CREDENTIAL_RE is not None:
-            m = _CANONICAL_CREDENTIAL_RE.search(line)
-            if m:
-                token = m.group(0)
-                leaks.append(
-                    Leak(
-                        origin=origin,
-                        kind="repo-credential-detector",
-                        line=lineno,
-                        snippet=token[:4] + "…(%d chars)" % len(token),
-                    )
+        if _CANONICAL_CREDENTIAL_HIT is not None and _CANONICAL_CREDENTIAL_HIT(line):
+            leaks.append(
+                Leak(
+                    origin=origin,
+                    kind="repo-credential-detector",
+                    line=lineno,
+                    snippet=line.lstrip()[:4] + "…(%d chars)" % len(line),
                 )
+            )
     # Encoded credentials, via the repo's OWN redactor rather than a fourth local pattern.
     #
     # ``_HARD_PATTERNS`` and the canonical detector both match a credential written
