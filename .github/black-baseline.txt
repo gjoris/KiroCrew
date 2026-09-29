@@ -700,7 +700,6 @@ test/test_omc_ledger_sync_coverage.py
 test/test_onboarding_import.py
 test/test_one_conversation_one_session.py
 test/test_open_dm_retry.py
-test/test_open_slots_persistence.py
 test/test_options_click_validation.py
 test/test_options_submit.py
 test/test_override_expiry_notice.py

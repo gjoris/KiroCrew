@@ -137,6 +137,29 @@ from kiro_crew.validation import ARTIFACT_SLUG_RE  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
+#: Env flag the container supervisor sets when it restored this boot's
+#: ``open_slots.json`` from a committed REMOTE snapshot and did NOT restore the
+#: transcripts (they arrive lazily, per turn). It tells the open-slot restore
+#: that a listed slot whose transcript is absent from local disk is a
+#: remote-only slot to keep as a reopen seed, not a dead tab to prune — the two
+#: are indistinguishable from local disk alone, and dropping a remote-only slot
+#: lets the next flush write an empty table the sidecar then commits. Unset on
+#: an ordinary boot (a developer gateway restart), where an absent transcript is
+#: a genuine answer and its key is pruned so dead tabs do not resurrect forever.
+ENV_AUTHORITY_RESTORED: str = "KIROCREW_CONTAINER_AUTHORITY_RESTORED"
+
+
+def _transcripts_may_be_remote_only() -> bool:
+    """True when absent-local transcripts may live in a not-yet-fetched remote.
+
+    Reads :data:`ENV_AUTHORITY_RESTORED`. Kept a function rather than a
+    module-level constant so a test can set the env and observe the branch
+    without a reimport, and so the value is read at restore time rather than at
+    import time (the supervisor sets it before the backend process starts).
+    """
+    return os.environ.get(ENV_AUTHORITY_RESTORED) == "1"
+
+
 #: Sentinel: the slot is a member key whose binding is missing/unreadable —
 #: skip publishing it (the transcript stays on disk; the member-thread
 #: endpoint re-creates and re-binds the slot on the next page open).
@@ -497,6 +520,10 @@ def _restore_open_slots_steps(state: DashboardState) -> "Iterator[int]":
     # off the class-level frozenset baseline.
     unrestored: set[str] = set()
     state.unrestored_slot_keys = unrestored
+    # Read once per restore: whether this boot's authority pair came from a
+    # remote snapshot whose transcripts are fetched lazily (see
+    # _transcripts_may_be_remote_only).
+    preserve_remote_only = _transcripts_may_be_remote_only()
     # Built once and shared across every tab — it is identical per slot.
     kiro_model_map = _build_kiro_model_map()
     for raw in keys:
@@ -529,6 +556,7 @@ def _restore_open_slots_steps(state: DashboardState) -> "Iterator[int]":
                 agent=agent,
                 effort_marker=effort_marker,
                 unrestored=unrestored,
+                preserve_remote_only=preserve_remote_only,
             )
         except Exception:
             logger.debug("restore_open_slots: rehydrate failed for %s", key, exc_info=True)
@@ -568,6 +596,7 @@ def _apply_restored_open_slot(
     effort_marker: bool = False,
     conv_log: ConversationLog | None = None,
     started: float | None = None,
+    preserve_remote_only: bool = False,
 ) -> int:
     """Turn one prefetched open-tab read into a slot; return 1 if it restored.
 
@@ -580,6 +609,11 @@ def _apply_restored_open_slot(
     passed only by the async driver, whose read happened in a worker thread. The
     synchronous generator reads inline with no suspension point, so its pre-read
     answers cannot have gone stale and it would only pay for redundant work.
+
+    *preserve_remote_only* carries :func:`_transcripts_may_be_remote_only`: when
+    the authority pair was restored from a remote snapshot without the
+    transcripts, a listed slot with no local transcript is a remote-only reopen
+    seed to keep, not a dead tab to prune.
     """
     if not readable:
         unrestored.add(key)
@@ -590,6 +624,23 @@ def _apply_restored_open_slot(
         )
         return 0
     if messages is None:
+        if preserve_remote_only and not meta.get("closed"):
+            # The authority pair was restored from a remote snapshot without the
+            # transcripts (they arrive lazily, per turn), so an absent LOCAL
+            # transcript does not mean the slot is gone — its transcript lives in
+            # a remote this task has not fetched yet. Keep the key as a reopen
+            # seed. Dropping it lets the next 5s flush write an empty
+            # open_slots.json that the sidecar commits, silently losing the
+            # restored slot table on an ordinary task replacement. A tab the user
+            # closed with ✕ still carries ``meta.closed`` and is NOT kept.
+            unrestored.add(key)
+            logger.info(
+                "restore_open_slots: %s has no local transcript yet after a "
+                "remote authority restore; keeping it in the reopen seed until "
+                "lazy retrieval completes",
+                key,
+            )
+            return 0
         # No metadata (never persisted) or the user closed the tab with ✕. Both
         # are confident answers, so the key is NOT carried as unrestored — the
         # synchronous helper's own guards reached the same verdict before.
@@ -721,6 +772,8 @@ async def restore_open_slots_async(state: DashboardState) -> int:
         unrestored: set[str] = set()
         state.unrestored_slot_keys = unrestored
         conv_log = state.conversation_log
+        # Read once per restore (see _transcripts_may_be_remote_only).
+        preserve_remote_only = _transcripts_may_be_remote_only()
         kiro_model_map = await asyncio.to_thread(_build_kiro_model_map)
         for raw in keys:
             key = _sanitize_open_slot_key(raw)
@@ -753,6 +806,7 @@ async def restore_open_slots_async(state: DashboardState) -> int:
                     # its answers can have gone stale.
                     conv_log=conv_log,
                     started=started,
+                    preserve_remote_only=preserve_remote_only,
                 )
             except Exception:
                 logger.debug("restore_open_slots: rehydrate failed for %s", key, exc_info=True)
