@@ -7,7 +7,10 @@ level, and an eager import of the domain modules would close that loop.
 
 Adding a tool means adding its descriptor to the domain module's
 ``schemas()`` and its handler to that module's ``HANDLERS``; nothing here needs
-to change.
+to change. A domain whose tools belong to something that can be switched off
+declares ALL of them in ``schemas()`` -- the half ``test_mcp_tool_registry``
+holds against ``HANDLERS`` -- and narrows what ``tools/list`` emits with an
+``advertised()`` function; ``apps`` is the one domain that does.
 
 Two modules in this package are not domains, and nothing here imports them:
 ``table`` (:class:`~kiro_crew.mcp_tools.table.ToolTable`, the one-row-per-tool
@@ -39,11 +42,13 @@ DOMAIN_MODULES: tuple[str, ...] = (
 
 
 def build_tool_list() -> list[dict[str, Any]]:
-    """Every ``kirocrew-core`` tool descriptor, concatenated by domain.
+    """Every ``kirocrew-core`` tool descriptor ``tools/list`` emits, concatenated by domain.
 
     Descriptors are rebuilt per call rather than cached: some carry a live
     value (the concurrent sub-agent cap), and a cache would pin the first
-    reading for the life of the server process.
+    reading for the life of the server process. A domain's ``advertised()``,
+    when it defines one, is read in place of its ``schemas()`` -- that is where
+    the ``apps`` domain drops the tools of an app that is switched off.
     """
     tools: list[dict[str, Any]] = []
     for name in DOMAIN_MODULES:
@@ -52,7 +57,8 @@ def build_tool_list() -> list[dict[str, Any]]:
         # to the top would close that loop and turn it into an import-time
         # failure on the gateway boot path. The laziness is load-bearing.
         module = importlib.import_module(f"{__name__}.{name}")
-        tools.extend(module.schemas())
+        advertised = getattr(module, "advertised", None)
+        tools.extend(advertised() if advertised is not None else module.schemas())
     return tools
 
 
