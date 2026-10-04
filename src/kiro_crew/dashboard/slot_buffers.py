@@ -800,9 +800,11 @@ class SlotBufferCoordinator:
                 if context is not None:
                     context["noteSession"] = live_session
                     if not slot.append_pending_context(context):
-                        # The pop above already retired the retry marker, so the
-                        # row meta is the only surface left for the loss.
-                        row_meta["contextDropped"] = True
+                        # The pop above already retired the retry marker. The
+                        # warning is the loss signal; the normal full-queue case
+                        # is refused earlier, at /note admission, so this fires
+                        # only on a race (an unexpiring /context takes the seat
+                        # between admission and flush) or a restart edge.
                         logger.warning(
                             "Slot %s delivered a held note without its context: "
                             "the pending-context queue had no seat",

@@ -10332,10 +10332,11 @@ def _source_cap_reached(slot: _ChatSlot, source: str) -> bool:
     cannot disagree about which entries are live.
 
     Entries HELD for the deferred-note flush count as well. They are not in the
-    queue yet, so a cap that read the queue alone admitted every one of them:
-    ten same-source notes posted during one turn each saw a clear cap, and the
-    flush then promoted all ten at once, past the per-source ceiling and into
-    the FIFO eviction that drops other sources' context.
+    queue yet, so a cap that reads the queue alone admits every one of them:
+    ten same-source notes posted during one turn each see a clear cap, and the
+    flush then promotes all ten at once, carrying that source past its
+    per-source ceiling. Counting the held halves here holds the ceiling at
+    admission so the flush never overfills the bucket.
     """
     if not source:
         return False
@@ -10362,9 +10363,12 @@ def _enqueue_pending_context(
     invalid ``max_age``), else None on success. The entry is consumed on the next
     user-initiated message via ``drain_pending_context``.
 
-    A 400 leaves the queue untouched. A 429 is decided by
-    ``append_pending_context``, which reclaims expired entries on the way, so a
-    refusal can have dropped dead entries -- nothing live is ever evicted.
+    A 400 leaves the queue untouched. The two 429s come from different places:
+    ``_build_pending_context_entry`` returns the per-source ``capacity_reached``
+    429 before any append, while the whole-queue ``context_not_queued`` 429 is
+    decided by ``append_pending_context``, which reclaims expired entries on the
+    way, so that refusal can have dropped dead entries -- nothing live is ever
+    evicted.
 
     ``max_age`` is the resolved seconds-to-live, or None for no expiry. HTTP
     callers already validate it via ``_validate_max_age``; the same guard runs
@@ -10913,6 +10917,22 @@ async def api_chat_slot_note(request: web.Request) -> web.Response:
     context_skipped = False
     context_entry: dict[str, object] | None = None
     if _source_cap_reached(slot, source):
+        context_skipped = True
+    elif deferred and not slot.has_pending_context_seat():
+        # The HELD path must refuse the context half at admission, the same way
+        # the immediate arm does when ``append_pending_context`` returns False.
+        # A held note's context is seated later, by ``flush_deferred_notes`` ->
+        # ``append_pending_context`` at turn end; if the queue is already at the
+        # seat ceiling now, that append refuses, and the only trace is a log
+        # warning -- nothing the caller ever sees. So the note would be
+        # acknowledged (200, ``visibleDeferred``) with its context silently
+        # dropped: the acknowledge-then-lose behaviour this endpoint
+        # exists to remove, moved onto the held path. ``has_pending_context_seat``
+        # counts live entries PLUS each held note's reserved context half, so the
+        # check is accurate: a later ``/context`` arrival cannot take the seat the
+        # flush would need, and expiry between now and the flush can only free
+        # seats, never consume them. We hold the VISIBLE line regardless (the
+        # audit record the caller came for) and report contextSkipped=true.
         context_skipped = True
     else:
         max_age = body.get("maxAge", _UNSET)

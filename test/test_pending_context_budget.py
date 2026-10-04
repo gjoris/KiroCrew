@@ -124,13 +124,14 @@ def test_an_expired_held_note_reserves_no_seat():
     assert slot.has_pending_context_seat() is True
 
 
-def test_the_flush_marks_the_row_when_the_held_context_has_no_seat():
-    """A refused context half must be readable on the delivered row, not dropped silently.
+def test_the_flush_warns_when_the_held_context_has_no_seat(caplog):
+    """A refused context half must leave a signal, not be dropped silently.
 
     Reachable because the hold is admitted by the deferred-note ceiling, not the
     context seat ceiling: 50 `/context` posts can seat before the note is held. The
     flush pops `context` as its retry marker, so a discarded return leaves no surface
-    at all -- the row lands with `ok` and the context is gone.
+    at all -- the row lands with `ok` and the context is gone. The warning is that
+    surface; the normal full-queue case is refused earlier, at /note admission.
     """
     slot = _ChatSlot("chat-flush-no-seat")
     slot.linked_session_key = "dashboard_chat-flush-no-seat"
@@ -138,22 +139,26 @@ def test_the_flush_marks_the_row_when_the_held_context_has_no_seat():
         assert slot.append_pending_context(_entry(f"e{i}", source=f"s{i}")) is True
     slot._deferred_notes.append(_held_note(_entry("held"), content="delivered without context"))
 
-    assert slot.flush_deferred_notes() == 1
+    with caplog.at_level("WARNING", logger="kiro_crew.dashboard.slot_buffers"):
+        assert slot.flush_deferred_notes() == 1
     row = [m for m in slot.messages if m.get("role") == "inject"][-1]
     assert row["content"] == "delivered without context"
-    assert row["meta"]["contextDropped"] is True
+    assert "contextDropped" not in row["meta"], "the unread flag is gone; the warning is the signal"
+    assert any("without its context" in r.message for r in caplog.records)
     assert all(e["content"] != "held" for e in slot._pending_context)
 
 
-def test_the_flush_leaves_the_row_unmarked_when_the_context_seats():
-    """Control for the marker: with a seat free, the context lands and nothing is marked."""
+def test_the_flush_is_silent_when_the_context_seats(caplog):
+    """Control for the warning: with a seat free, the context lands and nothing warns."""
     slot = _ChatSlot("chat-flush-seat")
     slot.linked_session_key = "dashboard_chat-flush-seat"
     slot._deferred_notes.append(_held_note(_entry("held"), content="delivered with context"))
 
-    assert slot.flush_deferred_notes() == 1
+    with caplog.at_level("WARNING", logger="kiro_crew.dashboard.slot_buffers"):
+        assert slot.flush_deferred_notes() == 1
     row = [m for m in slot.messages if m.get("role") == "inject"][-1]
     assert "contextDropped" not in row["meta"]
+    assert not any("without its context" in r.message for r in caplog.records)
     assert [e["content"] for e in slot._pending_context] == ["held"]
 
 
@@ -211,3 +216,94 @@ class TestImmediateNoteReportsRefusal:
 
         assert body["contextSkipped"] is False
         assert [e["content"] for e in slot._pending_context] == ["n"]
+
+
+class TestDeferredNoteReportsRefusal:
+    """A note HELD during a running turn must not answer ok:true over a context
+    half the flush will then drop. The deferred arm acknowledges the note with a
+    200 and ``visibleDeferred: true``; if it holds a context half for which the
+    queue has no seat, ``flush_deferred_notes`` later calls ``append_pending_context``,
+    which refuses, and the only trace is a log warning -- nothing the caller ever
+    sees. The refusal must be reported at admission, not at flush.
+    """
+
+    @asynccontextmanager
+    async def _client(self, state):
+        app = web.Application()
+        app["state"] = state
+        app.router.add_post("/api/chat/slots/{slot}/note", api_chat_slot_note)
+        async with TestClient(TestServer(app)) as c:
+            yield c
+
+    def _seeded(self, state, name: str) -> _ChatSlot:
+        slot = state.get_or_create_slot(name)
+        slot._titled = True
+        slot.append(role="user", content="a real message", cls="msg msg-u")
+        slot.drain()
+        return slot
+
+    @pytest.mark.asyncio
+    async def test_a_full_queue_answers_context_skipped_on_the_held_path(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr("kiro_crew.dashboard.state.config_dir", lambda: tmp_path)
+        state = _make_state(tmp_path)
+        slot = self._seeded(state, "s-note-held-full")
+        # 50 live entries spread 10-per-source over 5 sources, none of them the
+        # default "note" bucket -- so the per-source cap does NOT fire for the
+        # posted note and the ONLY thing that can refuse its context is the seat
+        # ceiling, which the deferred arm must consult.
+        for s in range(5):
+            for i in range(_MAX_PENDING_CONTEXT // 5):
+                assert slot.append_pending_context(_entry(f"e{s}-{i}", source=f"s{s}")) is True
+        assert slot.has_pending_context_seat() is False, "precondition: queue is full"
+        # Put the slot in a running turn so the note is HELD, not injected now.
+        # The handler holds the note when ``slot.running or _in_stage_execution``.
+        # Drive it through the ``running`` property on the slot's own class rather
+        # than writing a private slot attribute, so the hold does not depend on
+        # which concrete ``_ChatSlot`` object the registry handed back.
+        monkeypatch.setattr(type(slot), "running", property(lambda self: True))
+        assert slot.running, "precondition: the deferred arm, not the immediate one"
+
+        async with self._client(state) as client:
+            resp = await client.post("/api/chat/slots/s-note-held-full/note", json={"content": "n"})
+            assert resp.status == 200
+            body = await resp.json()
+
+        assert body["visibleDeferred"] is True, "precondition: the note was held"
+        assert body["contextSkipped"] is True, (
+            "a held note over a full queue must report its context refused at "
+            "admission; answering contextSkipped=false is the acknowledge-then-drop "
+            "loss this PR removes, now on the held path"
+        )
+        # The held note must carry NO context half -- otherwise the flush would
+        # try to seat it and silently drop it.
+        held = slot._deferred_notes[-1]
+        assert held["content"] == "n"
+        assert held["context"] is None, "the refused context half must not be held"
+        # pending must not exceed the ceiling: the note added no reserved seat.
+        assert body["pending"] == _MAX_PENDING_CONTEXT
+
+    @pytest.mark.asyncio
+    async def test_room_for_the_context_holds_it_and_reports_not_skipped(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Control: with a seat free, the held note keeps its context half and
+        reports it queued (reserved for the flush)."""
+        monkeypatch.setattr("kiro_crew.dashboard.state.config_dir", lambda: tmp_path)
+        state = _make_state(tmp_path)
+        slot = self._seeded(state, "s-note-held-room")
+        monkeypatch.setattr(type(slot), "running", property(lambda self: True))
+        assert slot.running
+
+        async with self._client(state) as client:
+            resp = await client.post("/api/chat/slots/s-note-held-room/note", json={"content": "n"})
+            assert resp.status == 200
+            body = await resp.json()
+
+        assert body["visibleDeferred"] is True
+        assert body["contextSkipped"] is False
+        held = slot._deferred_notes[-1]
+        assert held["content"] == "n"
+        assert isinstance(held["context"], dict)
+        assert held["context"]["content"] == "n"
