@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from kiro_crew import agent_state, kiro_cli
 from kiro_crew.agent import OWNED_KIRO_AGENT_FILES, agents_spec_lock, kiro_agents_dir_path
+from kiro_crew.agent_files import ASSISTANT_MEMBER_NAME, ASSISTANT_TEMPLATE_NAME
 from kiro_crew.agent_sdk.drivers.acp import derived_agent_permissions
 from kiro_crew.agent_spec_format import (
     agent_spec_candidates,
@@ -810,6 +811,17 @@ class CapabilityService:
             catalog = prepared["catalog"]
             connections = prepared["connections"]
         target = binding_data["kiro_agent"]
+        if target == ASSISTANT_TEMPLATE_NAME:
+            return self._finish_snapshot(
+                self._assistant_snapshot(member, project, catalog),
+                member=member,
+                catalog=catalog,
+                project=project,
+                binding_data=binding_data,
+                connections=connections,
+                raw=raw,
+                overlay=overlay,
+            )
         lineage = agent_state.get_fork_info(target, strict=True)
         intent = agent_state.get_capabilities(target)
         if lineage and lineage["private_to"] != member:
@@ -843,19 +855,82 @@ class CapabilityService:
             mode = "legacy_snapshot"
         else:
             mode = "shared"
-        snapshot = {
-            "member": member,
-            "target": target,
+        return self._finish_snapshot(
+            {
+                "target": target,
+                "spec": spec,
+                "path": path,
+                "parent_path": parent_path,
+                "parent_spec": parent,
+                "parent": descriptor,
+                "intent": intent,
+                "mode": mode,
+                "error": error,
+            },
+            member=member,
+            catalog=catalog,
+            project=project,
+            binding_data=binding_data,
+            connections=connections,
+            raw=raw,
+            overlay=overlay,
+        )
+
+    def _assistant_snapshot(self, member: str, project: str, catalog: dict[str, str]) -> dict:
+        """The singleton ``kirocrew-captain``: overrides, never a private fork.
+
+        The installer regenerates the template on every start, so the member's
+        edits are stored as overrides it re-applies (``agent_state`` member
+        overrides) and the member stays bound to the template. The Parent is the
+        installer's own output without them, so the view shows each override as a
+        local row on top of the current default.
+        """
+        from kiro_crew.agent import build_assistant_config
+
+        if member != ASSISTANT_MEMBER_NAME:
+            raise CapabilityError("assistant_template_reserved", 409)
+        path, spec, descriptor = _source(ASSISTANT_TEMPLATE_NAME, project)
+        if descriptor["scope"] != "global":
+            raise CapabilityError("private_template_shadowed")
+        parent = build_assistant_config(spec, None)
+        stored = agent_state.get_member_overrides(ASSISTANT_TEMPLATE_NAME)
+        intent = {
+            "schema_version": 1,
+            "parent": descriptor,
+            "accepted": _rows(parent, catalog),
+            "overrides": {section: copy.deepcopy(stored.get(section, {})) for section in SECTIONS},
+            "status": "saved",
+        }
+        return {
+            "target": ASSISTANT_TEMPLATE_NAME,
             "spec": spec,
             "path": path,
-            "parent_path": parent_path,
+            "parent_path": path,
             "parent_spec": parent,
             "parent": descriptor,
             "intent": intent,
+            "mode": "inherited",
+            "error": "",
+            "assistant": True,
+        }
+
+    def _finish_snapshot(
+        self,
+        partial: dict,
+        *,
+        member: str,
+        catalog: dict[str, str],
+        project: str,
+        binding_data: dict,
+        connections: dict,
+        raw: dict,
+        overlay: dict,
+    ) -> dict:
+        snapshot = {
+            "member": member,
+            **partial,
             "catalog": catalog,
             "project": project,
-            "mode": mode,
-            "error": error,
             "binding": binding_data,
             "connections": connections,
             "raw_binding": raw.get("agents", {}).get(member),
@@ -880,6 +955,17 @@ class CapabilityService:
 
         if snap["error"]:
             raise CapabilityError(snap["error"])
+        if snap.get("assistant") and (
+            request["accept_parent"]
+            or any(
+                op["action"] != "inherit"
+                and op["section"] not in agent_state.MEMBER_OVERRIDE_SECTIONS
+                for op in request["operations"]
+            )
+        ):
+            # The prompt, model, skills and resources are the installer's: the
+            # Assistant always runs the current default contract + role section.
+            raise CapabilityError("assistant_section_locked", 400)
         if snap["spec"].get("includeMcpJson", True) is not False and any(
             op.get("action") == "remove"
             and op.get("section") in ("mcpServers", "tools", "allowedTools", "autoApprove")
@@ -1022,6 +1108,14 @@ class CapabilityService:
             if action == "set":
                 intent["overrides"][section][key]["value"] = value
         accepted = {(i["section"], i["id"]) for i in request["accept_parent"]}
+        if snap.get("assistant"):
+            from kiro_crew.agent import build_assistant_config
+
+            # Shape checks only (wildcard exclusions, approval overlaps); the
+            # effective spec is exactly what the installer will write.
+            resolve_effective(snap["parent_spec"], snap["parent_spec"], intent, snap["catalog"])
+            overrides = {s: intent["overrides"][s] for s in agent_state.MEMBER_OVERRIDE_SECTIONS}
+            return build_assistant_config(snap["spec"], overrides), intent, []
         base = _ordinary_parent(
             snap["parent_spec"] if reset_parent else snap["spec"], snap["parent_spec"], intent
         )
@@ -1107,7 +1201,9 @@ class CapabilityService:
             "saved_revision": intent.get("revision", "") if intent else "",
             "sessions": [],
         }
-        if spec is None and intent:
+        if snap.get("assistant"):
+            runtime["status"] = "unverified"
+        elif spec is None and intent:
             try:
                 prepare_member_capabilities(snap["member"], snap["project"])
             except CapabilityError as exc:
@@ -1334,6 +1430,8 @@ class CapabilityService:
         ):
             raise CapabilityError("invalid_template_name", 400)
         snap = self._snapshot(member)
+        if snap.get("assistant"):
+            raise CapabilityError("assistant_template_reserved", 409)
         receipt = agent_state.get_publish_info(name)
         if receipt is not None:
             if receipt["member"] != member or expected_template not in (receipt["source"], name):
@@ -1450,10 +1548,10 @@ class CapabilityService:
 
     def put(self, member: str, body: Any, *, reset_parent: bool = False) -> dict:
         request = validate_request(body, commit=True)
-        prepared = {
-            plan[0]["member"]: plan[0]
-            for plan in self._plans(member, request, reset_parent=reset_parent)
-        }
+        plans = self._plans(member, request, reset_parent=reset_parent)
+        if plans[0][0].get("assistant"):
+            return self._put_assistant(member, request, plans)
+        prepared = {plan[0]["member"]: plan[0] for plan in plans}
         root = kiro_agents_dir_path()
         with ExitStack() as locks:
             committed: list[tuple[dict, dict, str]] = []
@@ -1533,6 +1631,29 @@ class CapabilityService:
             for _, _, target in committed:
                 state[target]["capabilities"]["status"] = "saved"
             agent_state._write(state)
+        from kiro_crew.agent_discovery import clear_list_agents_cache
+
+        clear_list_agents_cache()
+        return self.get(member)
+
+    def _put_assistant(self, member: str, request: dict, plans: list) -> dict:
+        """Persist the Assistant's overrides and have the installer re-apply them."""
+        from kiro_crew.agent import _install_assistant_agent
+
+        if not hmac.compare_digest(
+            request["preview_token"].encode("utf-8", "surrogatepass"),
+            self._preview_token(plans, request).encode("utf-8", "surrogatepass"),
+        ):
+            raise CapabilityError("stale_preview")
+        snap, _spec, intent, _ = plans[0]
+        if governance_answer_generation() != snap["generation"]:
+            raise CapabilityError("governance_changed")
+        agent_state.set_member_overrides(
+            ASSISTANT_TEMPLATE_NAME,
+            {s: intent["overrides"][s] for s in agent_state.MEMBER_OVERRIDE_SECTIONS},
+        )
+        if not _install_assistant_agent():
+            raise CapabilityError("assistant_template_unmanaged")
         from kiro_crew.agent_discovery import clear_list_agents_cache
 
         clear_list_agents_cache()

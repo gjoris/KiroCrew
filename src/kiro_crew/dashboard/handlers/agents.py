@@ -36,7 +36,7 @@ import time
 import uuid
 from collections.abc import Sequence  # noqa: F401
 from pathlib import Path  # noqa: F401
-from typing import Any
+from typing import Any, cast  # noqa: F401  (cast: crew_records reads it)
 
 from aiohttp import BodyPartReader, web  # noqa: F401
 
@@ -74,7 +74,19 @@ from kiro_crew.agent_discovery import (  # noqa: F401
     spec_model,
     spec_str,
 )
-from kiro_crew.agent_files import KAS_RESERVED_AGENT_IDS  # noqa: F401
+from kiro_crew.agent_files import (  # noqa: F401
+    ASSISTANT_MEMBER_NAME,
+    ASSISTANT_MEMBER_PROTECTED,
+    ASSISTANT_MEMBER_PROTECTED_MESSAGE,
+    ASSISTANT_MEMBER_RESERVED,
+    ASSISTANT_MEMBER_RESERVED_MESSAGE,
+    ASSISTANT_NAME_TAKEN,
+    ASSISTANT_TEMPLATE_NAME,
+    KAS_RESERVED_AGENT_IDS,
+    assistant_name_taken_message,
+    collides_with_assistant_name,
+    is_assistant_member,
+)
 from kiro_crew.agent_sdk.capabilities import capabilities_for, capabilities_of
 from kiro_crew.agent_sdk.drivers.acp import (
     EntitlementRevalidating,
@@ -203,6 +215,7 @@ from kiro_crew.dashboard.agent_admin.capabilities import (  # noqa: F401
     api_capability_skills_uninstall,
 )
 from kiro_crew.dashboard.agent_admin.crew_records import (  # noqa: F401
+    _api_kirocrew_agents_create,
     _crew_effort_rejected,
     _crew_memory_store_rejected,
     _refresh_session_defaults,
@@ -210,6 +223,10 @@ from kiro_crew.dashboard.agent_admin.crew_records import (  # noqa: F401
     api_kirocrew_agents_create,
 )
 from kiro_crew.dashboard.agent_admin.crew_removal import (  # noqa: F401
+    _assistant_member_protected_response,
+    _assistant_name_taken_response,
+    _assistant_reserved_response,
+    _AssistantMemberProtected,
     _member_slug_is_claimed,
     _prune_private_copy_of_deleted_crew,
     _reclaim_deleted_member_crew_log,

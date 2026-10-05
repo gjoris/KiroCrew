@@ -10,6 +10,7 @@ from aiohttp import web
 
 if TYPE_CHECKING:
     from kiro_crew.dashboard.handlers.agents import (
+        ASSISTANT_MEMBER_NAME,
         KiroCrewAgentConfig,
         KiroCrewConfig,
         UnknownMemoryStore,
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
         _spec_stem_on_disk,
         coerce_dict_section,
         discovery_executor,
+        is_assistant_member,
         kiro_agents_dir_path,
         list_agents,
         logger,
@@ -116,6 +118,8 @@ async def _do_agents_sync(request: web.Request) -> web.Response:
             if (
                 disc.name not in mc_kiro_agents
                 and disc.name not in cfg.agents
+                # Captain's key is created by the installer only.
+                and disc.name != ASSISTANT_MEMBER_NAME
                 and disc.source != "kirocrew"
                 # A fork is one crew's private copy, not a standalone template:
                 # normally its owner's binding puts it in mc_kiro_agents, so this
@@ -279,6 +283,8 @@ async def _do_agents_sync(request: web.Request) -> web.Response:
                     # snapshot and this lock hold is newer evidence than the
                     # stale discovered_names and must survive.
                     for aname, snap_entry in prune_candidates.items():
+                        if is_assistant_member(aname, snap_entry):
+                            continue
                         if agents.get(aname) == snap_entry:
                             store_name = snap_entry.get("memory_store", "")
                             record = stores.get(store_name)

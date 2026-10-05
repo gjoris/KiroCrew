@@ -1169,7 +1169,9 @@ Global Memory is **V1**. Explicit member creation allocates a unique empty **V2*
 store before publication. Automatic discovery registers agents on Global V1.
 Existing members retain their exact V1 binding. Only explicit new member
 creation provisions a member database; member edits never migrate a V1 binding
-or create a replacement for missing memory. Existing V1 data is preserved.
+or create a replacement for missing memory. The one exception is the built-in
+Captain row, which the installer itself moves onto a private store (see
+[Captain's memory](#captains-memory)). Existing V1 data is preserved.
 The crew editor describes each member's memory ownership and states that V2 is
 available only when creating a new crew member. Existing members retain their
 current version and have no migration or provisioning action in the editor.
@@ -1204,6 +1206,61 @@ raw agent file writes cannot modify managed SQLite state.
 | Scheduled work | `member_id` pins the member separately from its provider template. Creation, firing and resumed chat validate the pinned store |
 | Restart or continuation | The owning record retains the same frozen execution context |
 | Unavailable or corrupt memory | Learned-memory operations report unavailability; manual essentials remain usable. No global fallback or replacement empty database |
+| Captain (built-in `kirocrew-captain`) | Its own private V2 store, plus the user's Global `preferences.md` read-only and a Captain-only Global recall and preference line; see [Captain's memory](#captains-memory) |
+
+### Captain's memory
+
+Captain is the one member whose memory is split on purpose. Its working state
+(what it taught, what it recommended, what the user declined) is an ordinary
+private V2 store, written by `learn_add` and consolidation and read by
+`memory_recall` exactly as for any crewmate. What belongs to the user rather than
+to Captain stays in Global memory, and Captain reaches it three ways, none of
+which any other member has:
+
+- **Preferences, injected.** A fresh or post-compaction Captain session context
+  carries the Global `preferences.md` document read-only, as a
+  `[User Preferences -- from Global memory, read-only here]` block under the same
+  protected-content ceiling the ordinary `## User Preferences` block uses
+  (`ContextBuilder._assistant_global_preferences`). Nothing else from Global is
+  injected: no `pref.*` rows, semantic facts, episodes, daily history or Global
+  lessons.
+- **Global recall, on demand.** `global_memory_recall` on `kirocrew-guide` calls
+  `GET /api/captain/agent/global-recall`, which runs the same recall as
+  `/api/memory/recall` (`memory_member.recall_from_store`) against Global.
+  Read-only; refused in a temporary session.
+- **General preferences, written to Global.** `global_preference_add` calls
+  `POST /api/captain/agent/global-preference`, which appends one `- <line>` to
+  Global `preferences.md` under compare-and-swap (a concurrent consolidation or
+  dashboard Save makes it retry, then answer `preferences_busy`), never rewrites
+  existing text, answers `unchanged` for a line already present, and refuses a
+  multi-line value or one the secret redactor would change. Refused in incognito
+  and temporary sessions and gated by `capabilities.memory_writes` like
+  `learn_add`. This is how a preference such as "Address the user as Ray."
+  reaches every ordinary chat (through their `## User Preferences` block) and
+  Captain's next session, whose own consolidation would otherwise keep it
+  private.
+
+Why a separate document write rather than routing `learn_add`: Global lessons are
+deliberately not injected for Captain, so a lesson written to Global would not
+reach Captain's next session, while `preferences.md` is the one Global layer both
+Captain and ordinary chats receive. `learn_add` keeps its one rule (the session's
+own store), so no member's write is redirected by its category.
+
+Both routes live in `dashboard/handlers/captain_memory.py` under the strict
+`/api/captain/agent` prefix. The gate (`require_assistant_caller`) reads the
+authenticated execution record the internal transport vouches for and admits it
+only when `execution_context.is_assistant_execution` holds: a persisted
+`member_id` that resolves to the one row that is Captain by key AND template, a
+MEMBER selection under the `kirocrew-captain` template, and a store equal to that
+row's binding. A browser caller, an unverified record, a Global session, any
+other member (private or not, including one on Captain's template) and a delegate
+on Captain's store under another template get 403 `captain_only`. The tools are
+mounted only on Captain's template, but the gate, not the mount, is the boundary.
+
+Captain's chat history tools are the ordinary ones: `search_chat_history`,
+`get_chat_session` and `list_sessions` are scoped by workspace and privacy mode,
+not by member, so Captain (workspace `default`) grounds recommendations in the
+user's ordinary non-incognito sessions in that workspace.
 
 The Memory tab has separate global and member views. Member links address
 `/settings/overview?view=memory&store=<store>`; every member data request carries
@@ -1294,7 +1351,11 @@ revision tables and `schema_version`) but no `member_database` row, no
 and the `member_database` row, so that shape is refused everywhere and no
 runtime action can repair it.
 
-`memory_stores.migrate_legacy_member_stores(config)` is the one repair. It runs
+`memory_stores.migrate_legacy_member_stores(config)` is the one repair of
+pre-identity stores. The same start-of-process entry then runs
+`give_assistant_private_memory`, which moves a Captain row still on Global onto a
+newly provisioned private store (see [Captain's memory](#captains-memory) and
+[crew mode](crew-mode.md)); each step is logged and skipped on its own failure. It runs
 from `repair_legacy_member_stores()` at process start on both surfaces — the CLI
 prologue in `cli.main` for every CLI subcommand (except `doctor`, which only
 reports, and the `mcp-*` stdio servers, which are children of a gateway that

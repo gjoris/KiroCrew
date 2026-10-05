@@ -15,6 +15,13 @@ was already chosen stops working mid-session is
 concrete model. `"auto"` is validated like any other id and is not assumed usable: a
 partition that does not serve it makes it as unusable as any other unentitled id.
 
+A managed spec that follows the user's chat default (the default `kirocrew` spec, and
+Captain's `kirocrew-captain` template) gets an explicit `agent.model` written into its
+`model` field by its installer, and the `"auto"` sentinel when `agent.model` is unset or
+`"auto"`; the `agent.model` config applier reruns `rebuild_agent_config`, which rewrites
+both. A spec pin still outranks `agent.model` in the resolvers, so the propagation, not
+the resolver, is what keeps such a spec in step with the default.
+
 ## Resolve, don't guess
 
 For a model chosen on the caller's behalf — background one-liners, tips, inherited or

@@ -162,6 +162,14 @@ TYPE_OWNERSHIP: dict[str, frozenset[str]] = {
             # Owned by the session kind because the tool is mounted on nothing but a
             # member's DM session, which is the unit the entry lands in.
             "panel",
+            # Captain's change cards and guide offers. Each proposal is a row of the
+            # session's conversation, and ``card/*`` / ``guide/*`` record the proposal
+            # and every outcome in the same session's history. The live state stays
+            # the card and guide stores'; these entries are what a reader of the
+            # session (or a reload, once a store has pruned the record) can still say
+            # about it.
+            "card",
+            "guide",
         }
     ),
 }

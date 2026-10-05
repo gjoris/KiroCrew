@@ -702,6 +702,186 @@ name into `ResolvedBindings`, in this order:
 An unresolvable workspace falls back to `default_workspace`. Memory identity
 resolves exactly: the reserved `default` assistant uses Global Memory V1;
 existing V1 members keep their declared V1 binding.
+The built-in Captain member (config key `kirocrew-captain`,
+`agent_files.ASSISTANT_MEMBER_NAME`) is a separate crew member created once, bound to
+the managed `kirocrew-captain` template, with its own private V2 memory store
+(`member_id` `kirocrew-captain`), exactly as an explicitly created crewmate resolves.
+It speaks as its scrubbed display name, falling back to Captain, only while it is
+on that template and not running as an explicitly selected template; its
+identity, rules and member key stay `kirocrew-captain`. What Captain's memory
+holds and the read-only path it has into Global memory are specified in
+[memory-skills-hooks](memory-skills-hooks.md#captains-memory). The reserved `default` member is
+never rebound and keeps the ordinary member identity whatever template it names.
+The personal-assistant persona lives in the managed `kirocrew-captain` template,
+not in the generic member identity block. That template reads the existing
+onboarding profile to calibrate communication: role informs examples, technical
+comfort informs depth, and explicit user requests take precedence. Skipped or
+withheld profiles are not inferred.
+`kirocrew-captain` is a singleton template: only the `kirocrew-captain` member binds
+to it, and a capability edit naming it for any other member is refused
+(`assistant_template_reserved`). The installer rewrites the file on every
+gateway start, so the member's capability edits are never a private fork; they
+are stored as member overrides in the agent-state sidecar and re-applied on
+every regeneration, ahead of the governance ceiling, the auto-approve strip and
+the derived `permissions`. The capability view shows each override as a local
+row on top of the installer's own output.
+The template's `model` follows Settings -> Chat "Default model" through the default
+agent's own propagation: the installer writes the effective `agent.model`
+(`KiroCrewConfig.load()`, i.e. `config.json` with the `config.local.json` overlay
+merged over it, read through `normalize_agent_model`) into the spec, or the `auto`
+sentinel when it is unset or `auto`. The `agent.model` config applier reruns
+`rebuild_agent_config`, which re-installs this template, so a change reaches
+Captain's next session without a gateway restart, as it does the default agent's.
+The watcher diffs the merged document, so an overlay-only change fires the same
+applier. A rebuild that leaves Captain's managed spec stale (an install that
+raised, an unreadable spec or unreadable member overrides) is recorded
+(`assistant_agent.take_refresh_failure`) and takes the applier's failure path:
+one "Default model could not be applied" notification, no refresh broadcast, and
+a re-raise so the watcher retries. A foreign file at the path and a kept
+dashboard pin are not failures. The resolvers are unchanged: the spec's value is
+an ordinary per-agent pin. An explicit
+pick recorded on the template (`model_managed` False in the agent-state sidecar) is
+kept across every rewrite and outranks the global; an unreadable sidecar keeps the
+file's model. A crew-level `model` on the Captain row outranks both, as for any crew.
+The role section's reply rules: at most one short acknowledgement before the first
+tool call, then the outcome once, without repeating it or re-asking a question
+already asked; no internal ids (setting ids, tool names, field names) or internal
+words (cron, MCP, slot, spec, template) in replies; no claim that a guide started
+or a page opened before the user presses Start, and no mention of Start unless
+`guide_start` offered a guide that turn; no status-report line in answer to a plain
+question; dashboard locations and setup steps only after a lookup, never from
+memory; after saving the user's name, two concrete optional starters instead of an
+open question; and a reminder's time zone taken from the `[CURRENT DATE]` line
+(the configured Kiro Crew time zone, as an abbreviation), asked in plain words only
+when unknown, the IANA id going into the card alone.
+The template file's `prompt` holds only the installer mark (`# Kiro Crew
+Captain`, its first line and the provenance check the installer reads before
+replacing the file) and the role section. A `kirocrew-assistant.json` left by a
+build from before the template took Captain's name is not Captain's: it is not
+an owned file, its name and `# Kiro Crew Assistant` mark fail the provenance
+check, and the installer leaves it untouched (never rewritten, never deleted),
+so it lists as an ordinary template the owner may keep or delete. A session on that template gets an
+`[AGENT SYSTEM PROMPT]` block made of the contract an ordinary `kirocrew` chat
+gets for the slot's mode (the user's `prompt.md` when present, placeholders
+filled) followed by the role section, so the contract reaches the model once. A
+file at that path without the installer mark keeps its own prompt.
+`rebuild_agent_config` creates the `kirocrew-captain` row once, after the template's
+install outcome is known, under the config lock, and in the same call moves it onto
+a newly provisioned private store (`memory_stores.give_assistant_private_memory`:
+`provision_member_memory` then `persist_member_config`, the steps every explicit
+member creation takes), so a fresh install's first Captain turn already runs on it.
+A Captain row an earlier build created on Global memory is moved by the same
+function at the next process start (`repair_legacy_member_stores`, in the
+gateway's memory worker after readiness and in the CLI prologue); Global data is
+never moved, copied or deleted, so what Captain learned there stays in Global. The
+member id is allocated as the pre-identity upgrade allocates one, so Captain's own
+retained DM binding does not push it off the `kirocrew-captain` slug. Because a V2
+member's pinned thread is keyed by its store generation, the move opens a fresh
+Captain thread; the earlier thread's transcript stays in History. It is skipped when the key
+already exists in `config.json` or the `config.local.json` overlay, when the
+template did not install (a foreign or unreadable file owns the path), or when
+the overlay supplies the whole roster. An empty base roster is seeded with the
+same `default` row the loader's migration writes, so the implicit default member
+survives. The `captain_member_created.json` sidecar records the attempt, so the
+creation is one-time. Captain is identified positively by key AND binding
+(`agent_files.is_assistant_member`); a member with any other key, including one
+a user named `assistant`, is an ordinary crewmate the installer neither reads nor
+changes.
+
+Captain's identity is locked:
+
+- **Not deletable.** `DELETE /api/agents/{name}` (pre-check and inside the config
+  lock) and `kirocrew agent delete` refuse it with 409 / exit 1, code
+  `assistant_member_protected`; the agent-sync and crewmate-prune passes skip it;
+  the change-card catalog refuses any plan or undo plan that deletes
+  `/api/agents/kirocrew-captain` (`deletes_assistant_member`). The crew editor
+  shows Captain's Danger zone row disabled with the reason.
+- **Key reserved for the installer.** `members.key_new_crew` -- shared by
+  `POST /api/agents` (which the Meet CrewMates flow and the `crewmate.create`
+  card both call) and `kirocrew agent create` -- refuses the key with 409
+  `assistant_member_reserved` whether or not Captain exists, and never derives it
+  from a free-form name. The `crewmate.create` card refuses it at preview, and
+  agent sync never registers a discovered template under it.
+- **Template fixed.** Rebinding Captain off `kirocrew-captain` (`PUT
+  /api/agents/{name}` fast and generic paths, `kirocrew agent update
+  --kiro-agent`) is refused with `assistant_member_reserved`. Keys are never
+  renamed, so renaming Captain writes `display_name` only.
+- **One Captain name.** Another member may not take Captain's current label
+  (`display_name`, else `Captain`), compared trimmed and case-insensitively
+  (`agent_files.collides_with_assistant_name`): create, `PUT /api/agents/{name}`
+  and the `crewmate.create` / `crewmate.update` cards refuse it with 409
+  `assistant_name_taken`, and the create and rename forms show the refusal. The ordinary chat
+template and `default_agent` selection are not changed.
+User-authored role text, permanent rules and briefing remain intact.
+Recommendations use only the memory and history already available to the session
+(Captain's own memory, its read-only `global_memory_recall`, and the
+workspace-scoped `search_chat_history` / `get_chat_session` / `list_sessions`)
+and explain their evidence. Changes to Kiro Crew itself (settings, schedules,
+crewmates and their capabilities, templates, MCP servers, connections, secrets,
+app trust, denied-command rules) go through change cards: the template proposes
+one registered kind with `propose_change`, after `list_change_kinds` when the
+kind is unclear, `find_setting` for a setting, and `get_member_capabilities` for
+a crewmate's tools and approvals; `get_change_status` reads an outcome. All five
+are pre-approved, since a proposal changes nothing. A reminder that runs once is
+a `schedule.create` card with `at` (a local ISO-8601 date-time, no offset)
+instead of `cron_expr`; the prompt says "Ready to schedule for ..." before the
+owner approves and calls it scheduled only after the card result reports it
+applied. How-to questions are answered from the packaged user docs through
+`search_docs` on `kirocrew-guide`, and where-is questions first through
+`find_ui` on the same server (both `agent._ASSISTANT_DOCS_GRANTS`, pre-approved):
+`search_docs` searches and pages through `kiro_crew/docs/*.md` only, by the
+directory's own listing, and `find_ui` searches the packaged dashboard location
+index ([mcp](../../architecture/mcp.md#find_ui-and-the-ui-location-index)); neither
+makes a gateway call or needs a caller identity. The prompt forbids reading
+documentation or a tool's spilled output through the shell or a file read, and
+keeps dashboard locations out of the prompt: the rule is procedural (quote the
+path labels `find_ui` returns, in order, as plain text, with a route only ever
+as a markdown link on a label and never bare or in code formatting; state its
+prerequisites, a reveal step carrying `only_if` as a conditional step such as
+"If you don't see the list, click ... first" rather than a fact about where the
+target is shown; treat no_match as "not indexed"; on a miss or an ambiguous
+result, call `find_ui` again with `area` to list the likeliest area whole and pick
+the entry that means the question, quoting only returned entries and relaying a
+`tier: auto` entry hedged; if none fits, say so and offer `search_docs`), so no
+location is ever stated from memory. The never-say-"card" rule names two bad shapes from real
+runs, the second being "I'll set up a card where you type the value in
+directly", with the replacement "I'll put a secure field here for you to type
+the value into". When a loose request gets a default plan, the
+plan keeps everything the user stated and fills only the unstated details. For "why" questions the
+template also has two read-only troubleshooting sources, both pre-approved:
+`diagnose_settings` on `kirocrew-guide` (`findings` first: read-only symptom
+probes from `diagnose_probes.py`, one per reported failure -- a hidden model, an
+agent spec installed after the gateway started, a model pin the account does not
+offer, a deprecated agent spec, failing crons, dead MCP paths in agent specs,
+kiro-cli sign-in, embedding coverage and dimension, an unreachable Remote Crew,
+a turn running over 20 minutes, the last day's tool failures and refused turns,
+and the usage limit -- each `{id, status: ok|warn|problem|unknown, summary,
+evidence, fix?}` where `fix` is a change card to propose or steps to tell the
+user; then every config and dashboard-config key
+whose value differs from its dataclass default, joined to its Settings entry;
+credential-like keys report only whether they are set; plus the newest 50
+"Dashboard: ..." lines from Global memory history; an optional `topic` is split
+into meaningful words and keeps a row, history line or `ok` finding when any word
+matches its key, setting id, label or Settings description, most hits first,
+returning the unfiltered result with `topic_matched: false` when nothing matches) and the `kirocrew-crew-log` server's `crew_log_list`, `crew_log_read` and
+`crew_log_projection` (`agent._ASSISTANT_CREW_LOG_GRANTS`), mounted only on this
+template and read under the crew-log routes' own scope. The prompt orders them:
+settings diagnosis, then the crew log for a particular run, then the packaged
+docs, and only then anything else; the answer names its source in plain words
+and a misconfiguration found that way becomes a change card. The card renders in the
+proposing chat as a row of the conversation at the point it was proposed, and only the owner's click
+applies it through the existing settings route, verified by the card hook (see
+[MCP architecture](../../architecture/mcp.md)). A secret's value is typed into the
+card and never passes through the agent. The template does not apply settings
+with `kirocrew config set`, and uses guides only when the user asks where a
+control is or wants to make the change themselves. Card outcomes reach its next
+turn as a `[CHANGE CARD RESULTS]` block that never starts a turn, and every owner
+change through those routes, card or manual, is a names-only "Dashboard: ..." line
+in Global memory history it recalls when recommending configuration. Crewmate
+proposals are `crewmate.create` cards; the
+`/members?create=1&name=<encoded-name>&goal=<encoded-goal>` link to an editable UI
+draft remains for a user who wants to fill it in; opening a draft never creates a
+member or starts a schedule.
 Explicitly created members own unique V2 stores identified by an immutable persisted `member_id`, independent of their editable label.
 Automatically discovered agents start on Global V1 without member allocation.
 Missing, unreadable, shared or mismatched member identity makes memory operations
@@ -753,45 +933,87 @@ retains its localized error heading and structured diagnostic report. Details
 reveals the redacted reason on demand; Ask the agent receives the same report
 when navigation permits. The cached conversation and its drafts remain available.
 
-The Crewmates page (`/members`, titled "Crewmates") creates a crewmate in place.
-Its "New crewmate" dialog — name, Built from (the default agent or an installed
-custom agent), "What it looks after", and an Advanced fold with workspace, model,
-triggers and session colour — is the ONE create form
-(`website/src/pages/members/NewCrewmateDialog.tsx`), mounted from every create
-door: the Crewmates page's header "+" and its empty-state hero, AND the crew
-manager's "Add crew member" tile / header button and its dashed roster card
-(`website/src/pages/KiroCrewAgentsPage.tsx`, the Crews tab of Agent
-Capabilities). The crew manager has no separate create sheet; clicking
-"Add crew member" there opens this same dialog, so a create is one form however
-it is reached. It posts to the same `POST /api/agents`: one write path, several
-front doors. "What it looks
-after" is stored as the crew record's `description`. What happens AFTER the
-create depends on the door. From the Crewmates page the page
-re-reads the roster, opens the new crewmate's chat through the verified
-thread-opening endpoint, and seeds one first user turn into that chat over the
-composer's own send path, so the chat opens with the crewmate's greeting; the
-seed names the job when one was given. If that chat open fails, the greeting is
-parked in page memory and seeds the crewmate's next successful open in this
-visit, once; leaving or reloading the page drops it, and nothing is persisted.
-From the crew manager the door is CONFIG mode: the dialog closes and the crew
-manager re-reads its roster so the new card appears in place; it does NOT
-navigate to the crewmate's chat and seeds no greeting, because the user is
-configuring crews, not opening a conversation. The dialog's own success path
-(cache invalidation, the post-failure reconcile, "what it looks after" stored as
+The Crewmates page (`/members`, titled "Crewmates") opens the built-in
+`kirocrew-captain` member when there is no previously used conversation.
+An explicitly configured display name takes precedence; its key, thread and
+private V2 memory store are its own. Captain also reads the user's Global
+`preferences.md` (injected read-only) and has a Captain-only read-only Global
+recall, specified in
+[memory-skills-hooks](memory-skills-hooks.md#captains-memory). A roster
+containing only this member is not an
+empty state. Returning users restore their remembered member, otherwise the most
+recently used conversation, before falling back to Captain. Explicit member
+and team links take precedence. On narrow screens, Back opens the roster through
+`view=roster`; that explicit roster view does not auto-open a conversation.
+Loading, a failed roster read and a genuinely empty roster remain distinct.
+
+Captain's chat has no static welcome card. Captain speaks first instead: once
+the thread endpoint has confirmed Captain's pinned thread, the page calls
+`POST /api/members/{slug}/greet` (owner-only; app tokens get 404), once per
+thread per tab (`pages/members/useCaptainFirstGreeting.ts`). The server
+(`dashboard/captain_greeting.py`) starts a greeting only when the slug's DM
+binding names `kirocrew-captain`, the live slot is that member's pinned
+(`mode="member"`, agent `kirocrew-captain`) local thread, it holds no rows or
+queued entries, and no turn is running. It then claims the once-only marker
+`members/<slug>/captain_greeting.json` with `O_CREAT|O_EXCL` before dispatch, so
+two tabs, a reload or a retry after a failed turn never greet twice; a declined
+request leaves the marker unclaimed. The greeting is one real Captain turn:
+`_run_chat` with the hidden kickoff `CAPTAIN_GREETING_KICKOFF`
+(`_synthetic_payload=True`, actor `gateway`) and NO transcript row for it, so the
+user sees only Captain's own reply, which stays in Captain's session context. The
+Captain role prompt's "First greeting and names" section tells it to reply in at
+most three short sentences: introduce itself by its name, cover in one sentence
+finding things, pointing with an arrow on the page, making confirmed changes and
+troubleshooting, then ask what to call the user, with no feature tour, suggestion
+or tool call. When the user answers, it saves the name once with
+`global_preference_add` (a standing preference on Global memory). It uses a name
+only when the User Preferences block or a memory result states one explicitly,
+and then greets the user by it instead of asking; it never infers one from a
+username, home path, email or host name, and a first greeting never says
+"welcome back". The kickoff restates both. The route answers
+`{"outcome": ...}` (`started`, `already_greeted`, `not_empty`, `busy`,
+`not_captain`, `no_thread`). A greeting turn that fails surfaces through the
+ordinary turn error path once; the marker is already claimed, so it never loops,
+and the composer stays usable.
+
+The primary New crewmate action and Assistant proposals open the same embedded
+`MeetCrewmatesFlow`: goal, name, schedule and confirmation in the chapter shell's
+split-panel layout. The embedded shell retains the original 760px height and
+6xl width caps and the same four-mascot composition. From `xl` its aside takes the
+original shell's widest 415px and shows all four mascots; narrower asides show
+none, since the page navigation leaves no room for them beside the copy.
+No modal, viewport scrim or focus trap is added. The current
+chat stays mounted while hidden, preserving its draft and reading position.
+Back returns to it and retains the unfinished creation draft; navigation away
+warns before losing that draft. A proposal cannot replace an edited draft.
+Completion offers a return to the originating conversation with a host-rendered
+creation receipt, or an explicit link to the new member's chat. Receipts are
+shape-checked records in this browser tab's sessionStorage, keyed by originating
+member; they survive a page return in that tab but are not server-side transcript
+entries or cross-device history. The receipt is
+not an AI message and does not start an agent turn. Schedule failures are reported
+separately from successful member creation. Timing and write reconciliation are
+specified in [config](config.md#meet-crewmates-first-run-state).
+
+The explicit Advanced entry preserves the full create form's workspace, model,
+routing and colour controls, also embedded in the page. That full form is the ONE
+"New crewmate" dialog (`website/src/pages/members/NewCrewmateDialog.tsx`): it is
+also mounted by the crew manager's "Add crew member" tile / header button and its
+dashed roster card (`website/src/pages/KiroCrewAgentsPage.tsx`, the Crews tab of
+Agent Capabilities), which has no separate create sheet. Both forms use the
+existing owner-gated `POST /api/agents`; editing an existing member still uses
+the crew manager. What happens after a create from the full form depends on the
+door. On the Crewmates page the post-create greeting follows the existing
+verified-thread and composer-send path, with failures retaining their retry. From
+the crew manager the door is CONFIG mode: the dialog closes and the crew manager
+re-reads its roster so the new card appears in place; it does NOT navigate to the
+crewmate's chat and seeds no greeting. The dialog's own success path (cache
+invalidation, the post-failure reconcile, "what it looks after" stored as
 `description`) is identical on both doors; only the caller's `onCreated`
 differs. `NewCrewmateDialog` imports its field frame and field components from
 `KiroCrewAgentsPage`, so the two pages cannot drift; the resulting call-time
 import cycle is resolved because both reference the other's bindings only inside
 component bodies.
-Landing rule (Crewmates page): with no crewmates the page
-shows a single empty-state hero (ghost avatar, "No crewmates yet", one line,
-"New crewmate") in place of a roster call to action and a "pick a member" pane;
-with crewmates and no `?member=`, the remembered crewmate opens, else the most
-recently used one (greatest `last_active_ts`, ties keep roster order). Below md
-nothing auto-opens — the roster is the page. A `?member=` naming a crewmate that
-is gone falls back the same way, under the existing swap notice. The page's copy
-says crewmate / Crewmates and "Built from"; the crew record, its API and its
-identifiers are unchanged.
 
 The roster lists a row unasked when EITHER its Crewmates-page DM thread already
 holds a message (any origin) OR it was created on the dashboard (`source` is
@@ -862,7 +1084,20 @@ does not migrate it or grant access to that member's member store.
 session on a crew starts with, highest tier first: the crew's own `model`, the
 bound kiro agent's pinned model (skipped for the built-in `kirocrew` agent), the
 global `agent.model`, then the installed agent file's model. A per-session pick
-outranks all four and is not considered there.
+outranks all four and is not considered there. A bound template whose `model` is
+`auto` is NOT treated alike everywhere. The chip (`resolve_effective_model`)
+collapses it through `normalize_agent_model` and shows the global. The session
+layer (`session._session_model` -> `_model_fallback`) defers to the provider for
+ANY nonempty template value, `auto` included, so it returns `None`. The factory
+(`acp_effective_model`) then reads the template pin, collapses `auto` to `""`, and
+sends no model, which leaves kiro-cli's own resolution in charge rather than the
+global. That precedence is unchanged for ordinary named templates. No template
+follows the global default through these resolvers. Captain's template follows it
+through materialization instead: its installer writes the effective `agent.model`
+(base `config.json` with the `config.local.json` overlay merged, normalized) into
+the spec, or `auto` when that is unset. The `agent.model` applier's
+`rebuild_agent_config` then rewrites the spec on each change, while a dashboard
+pin (`model_managed` False) is kept.
 
 The loader is defensive about hand-edited config: a non-string `model` or
 `triggers` collapses to `""`, an unknown `reasoning_effort` collapses to inherit,

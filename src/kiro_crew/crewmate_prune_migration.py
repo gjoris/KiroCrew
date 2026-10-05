@@ -165,6 +165,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from kiro_crew.agent_files import is_assistant_member
 from kiro_crew.agent_spec_format import NATIVE_SKILL_ALIAS_PREFIX
 from kiro_crew.config.loader import (
     ConfigReadError,
@@ -739,6 +740,8 @@ def remove_never_chatted(
                 agents = coerce_dict_section(doc, "agents")
                 raw = agents.get(_name)
                 if not isinstance(raw, dict) or raw.get("kiro_agent") != _bound:
+                    return None
+                if is_assistant_member(_name, raw):
                     return None
                 if not _is_fresh_sync_shape(raw, kiro_agent=_bound):
                     return None

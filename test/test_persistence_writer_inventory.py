@@ -63,6 +63,13 @@ GATED_AUTOMATIC = {
     # The enforcement point behind the learn_add MCP tool: every transport that
     # posts a lesson (tool, dashboard, direct HTTP) is refused by this one check.
     "dashboard/handlers/cron.py::api_lessons_create",
+    # Captain's global_preference_add: agent-written at the user's request, the
+    # same footing as learn_add, so it is refused while the switch is off.
+    "dashboard/handlers/captain_memory.py::_append_preference",
+    # The "Dashboard: ..." history line every owner mutation leaves in Global
+    # memory: automatic, so it is skipped while the switch is off.
+    "dashboard/handlers/change_cards.py::_record_memory",
+    "dashboard/handlers/change_cards.py::_write",
 }
 
 #: Writers that are deliberately NOT gated, each with the reason it is exempt.

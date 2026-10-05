@@ -533,6 +533,27 @@ _STRICT_INTERNAL_API_PATHS = frozenset(
         # internal-secret call falls through to cookie auth and every publish
         # fails with 403.
         "/api/agent-panel",
+        # MCP-only (the four kirocrew-guide tools); no browser caller. Prefix
+        # matching covers "/actions", "/start", "/status" and "/cancel". STRICT:
+        # the caller's slot is derived from the X-Session-Key this secret backs,
+        # so a cookie fall-through would let a browser name any session as the one
+        # offering the guide. The browser half ("/api/guide/pending", "/claim",
+        # ...) is deliberately NOT under this prefix and stays on cookie auth.
+        "/api/guide/agent",
+        # MCP-only (the list_change_kinds / propose_change / get_change_status tools); no browser
+        # caller. Prefix matching covers "/kinds", "/propose" and "/status".
+        # STRICT for the same reason as the guide: the card's slot is derived from
+        # the X-Session-Key this secret backs. The browser half ("/api/cards/pending",
+        # "/api/cards/{id}/preview|cancel|dismiss") is deliberately NOT under this
+        # prefix and stays on owner-only cookie auth; applying a card happens only
+        # on the existing settings routes, through the card hook.
+        "/api/cards/agent",
+        # MCP-only (Captain's global_memory_recall / global_preference_add tools,
+        # on the kirocrew-guide server); no browser caller. Prefix matching covers
+        # "/global-recall" and "/global-preference". STRICT: the handler admits
+        # only Captain's own execution record, which this secret backs; a cookie
+        # fall-through would let a browser name a session to read Global through.
+        "/api/captain/agent",
         # MCP-only (knowledge_add_document tool); no browser caller — the
         # dashboard ingests via its own cookie-authed knowledge routes. Same
         # wiring class as "/api/notifications/agent" above.
@@ -2031,6 +2052,52 @@ def _register_mcp_routes(app: web.Application) -> None:
         "/api/agent-panel/publish", _deferred("agent_panel", "api_agent_panel_publish")
     )
     app.router.add_get("/api/members/{slug}/panel", _deferred("agent_panel", "api_member_panel"))
+    # UI guides (``kirocrew-guide``). The agent half is MCP-only and sits under
+    # the strict "/api/guide/agent" prefix; the browser half is cookie-authed and
+    # owner-only, deliberately OFF that prefix. Deferred like the panel: the server
+    # is opt-in, so most gateways never load the module. The paths are duplicated
+    # from ``guide.register_guide_routes``, and a test pins the two together.
+    for _method, _path, _name in (
+        ("GET", "/api/guide/agent/actions", "api_guide_agent_actions"),
+        ("POST", "/api/guide/agent/start", "api_guide_agent_start"),
+        ("GET", "/api/guide/agent/status", "api_guide_agent_status"),
+        ("POST", "/api/guide/agent/cancel", "api_guide_agent_cancel"),
+        ("GET", "/api/guide/pending", "api_guide_pending"),
+        ("POST", "/api/guide/claim", "api_guide_claim"),
+        ("POST", "/api/guide/progress", "api_guide_progress"),
+        ("POST", "/api/guide/heartbeat", "api_guide_heartbeat"),
+        ("POST", "/api/guide/cancel", "api_guide_cancel"),
+        ("POST", "/api/guide/dismiss", "api_guide_dismiss"),
+        ("POST", "/api/guide/replay", "api_guide_replay"),
+    ):
+        app.router.add_route(_method, _path, _deferred("guide", _name))
+    # Change cards. Same split as the guide: the agent half is MCP-only under the
+    # strict "/api/cards/agent" prefix, the browser half is owner-only cookie auth.
+    # The paths are duplicated from ``change_cards.register_change_card_routes``,
+    # and a test pins the two together.
+    for _method, _path, _name in (
+        ("GET", "/api/cards/agent/kinds", "api_cards_agent_kinds"),
+        ("GET", "/api/cards/agent/settings", "api_cards_agent_settings"),
+        ("GET", "/api/cards/agent/capabilities", "api_cards_agent_capabilities"),
+        ("GET", "/api/cards/agent/diagnose", "api_cards_agent_diagnose"),
+        ("POST", "/api/cards/agent/propose", "api_cards_agent_propose"),
+        ("GET", "/api/cards/agent/status", "api_cards_agent_status"),
+        ("GET", "/api/cards/pending", "api_cards_pending"),
+        ("POST", "/api/cards/{card_id}/preview", "api_cards_preview"),
+        ("POST", "/api/cards/{card_id}/cancel", "api_cards_cancel"),
+        ("POST", "/api/cards/{card_id}/dismiss", "api_cards_dismiss"),
+    ):
+        app.router.add_route(_method, _path, _deferred("change_cards", _name))
+    # Captain's read-only Global recall and Global preference line. MCP-only under
+    # the strict "/api/captain/agent" prefix; the handler admits Captain alone.
+    app.router.add_get(
+        "/api/captain/agent/global-recall",
+        _deferred("captain_memory", "api_captain_global_recall"),
+    )
+    app.router.add_post(
+        "/api/captain/agent/global-preference",
+        _deferred("captain_memory", "api_captain_global_preference"),
+    )
     app.router.add_get("/api/crons", handlers.api_crons)
     app.router.add_post("/api/crons", handlers.api_crons_create)
     app.router.add_delete("/api/crons", handlers.api_cron_batch_delete)
@@ -3867,6 +3934,29 @@ def _register_crewmate_prune_gate(app: web.Application, state: DashboardState) -
     app.middlewares.append(_crewmate_prune_gate)
 
 
+def _register_change_card_hook(app: web.Application) -> None:
+    """Innermost middleware on the settings routes a change card's plan may name.
+
+    Registered after the explicit chain, so the auth middleware has already
+    classified the caller. Only a request whose matched route is in
+    ``change_card_catalog.HOOKED_ROUTES`` reaches the hook module, so every other
+    request pays one set lookup and the module loads on first use.
+    """
+    from kiro_crew.change_card_catalog import HOOKED_ROUTES
+
+    @web.middleware  # type: ignore[misc]
+    async def _change_card_hook(request: web.Request, handler: Any) -> web.StreamResponse:
+        resource = getattr(request.match_info.route, "resource", None)
+        template = getattr(resource, "canonical", None)
+        if (request.method.upper(), template) not in HOOKED_ROUTES:
+            return await handler(request)
+        from kiro_crew.dashboard.handlers.change_cards import change_card_middleware
+
+        return await change_card_middleware(request, handler)
+
+    app.middlewares.append(_change_card_hook)
+
+
 def _crewmate_prune_gate_holds_path(path: str) -> bool:
     """Whether *path* is one the gate holds whatever the request's method."""
     return any(
@@ -5317,7 +5407,7 @@ def _register_config_watch(
             return
         nonlocal default_model_failure_notified
         try:
-            from kiro_crew.agent import rebuild_agent_config_reporting
+            from kiro_crew.agent import rebuild_agent_config_reporting, take_refresh_failure
 
             # ``rebuild_agent_config_reporting`` returns ``wrote=False`` — WITHOUT
             # writing — exactly when the shared-home guard refuses to rewrite this
@@ -5327,7 +5417,19 @@ def _register_config_watch(
             # "rebuilt" while new sessions still run the previous model. Route a
             # refusal into the failure branch below so it notifies once and defers
             # for the watcher's retry, the same as any other unwritten spec.
-            _spec_path, wrote = await asyncio.to_thread(rebuild_agent_config_reporting)
+            #
+            # The same rebuild re-installs Captain's managed spec, which follows
+            # this key too. Its outcome is recorded thread-locally, so it is read
+            # on the worker thread that ran the rebuild (cleared first, so a
+            # verdict a previous rebuild left on a reused pool thread is never
+            # mistaken for this one's). A preserved foreign template or a
+            # dashboard pin reports nothing; only a spec left stale does.
+            def _rebuild() -> tuple[bool, str | None]:
+                take_refresh_failure()
+                _spec_path, wrote_ = rebuild_agent_config_reporting()
+                return wrote_, take_refresh_failure()
+
+            wrote, captain_failure = await asyncio.to_thread(_rebuild)
             if not wrote:
                 raise RuntimeError(
                     "agent spec rebuild was refused (shared agent home); "
@@ -5354,6 +5456,14 @@ def _register_config_watch(
                         "default-model warm-pool reconcile after rebuild failed",
                         exc_info=True,
                     )
+            # Raised only now: kirocrew.json is already rebuilt, so the warm pool
+            # above is reconciled against it either way. What stays unapplied is
+            # Captain's spec, so the operator is told and the watcher retries.
+            if captain_failure:
+                raise RuntimeError(
+                    f"{captain_failure}; config saved but Captain's spec still "
+                    "pins the previous model"
+                )
             # The config value and generated agent spec now agree. Tell every
             # dashboard window to refetch both the config-backed picker and the
             # effective-model endpoints only after that rebuild has completed;
@@ -6524,6 +6634,7 @@ async def start_dashboard(
         _register_connections_warm_lifecycle(app, state)
         _register_workflow_lifecycle(app, state)
         _register_crewmate_prune_gate(app, state)
+        _register_change_card_hook(app)
 
         # Unix-socket cleanup hook — registered before runner.setup freezes the
         # signal lists; the path itself only becomes known after the site starts

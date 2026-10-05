@@ -473,6 +473,35 @@ def member_config_for_id(config: Any, member_id: str) -> tuple[str, Any]:
     return matches[0]
 
 
+def is_assistant_execution(config: Any, execution: object) -> bool:
+    """True when *execution* is Captain's own turn, judged from the captured record.
+
+    The record must carry a persisted ``member_id`` (never a name), be a MEMBER
+    selection under Captain's singleton template, and that id must resolve to the
+    one configured row that is Captain by key AND template
+    (:func:`kiro_crew.agent_files.is_assistant_member`) and is still bound to the
+    record's store. A delegate on Captain's store under another template, an
+    ordinary member, a Global session and an unresolvable id are all False. This
+    is what gates Captain's read-only view of Global memory; it reads the
+    authenticated execution record, never a prompt, a display name or a slot.
+    """
+    from kiro_crew.agent_files import ASSISTANT_TEMPLATE_NAME, is_assistant_member
+    from kiro_crew.memory_stores import UnknownMemoryStore
+
+    if not isinstance(execution, ExecutionContext) or not execution.member_id:
+        return False
+    if execution.selection_kind != "member" or execution.template_id != ASSISTANT_TEMPLATE_NAME:
+        return False
+    try:
+        alias, member = member_config_for_id(config, execution.member_id)
+    except UnknownMemoryStore:
+        return False
+    return (
+        is_assistant_member(alias, member)
+        and getattr(member, "memory_store", "") == execution.store.store_id
+    )
+
+
 def resolve_member_execution(
     config: Any,
     member: str,

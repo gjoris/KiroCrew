@@ -44,7 +44,7 @@ cannot disagree with what was sent.
 
 | # | Block | Fed by | Condition |
 |--:|---|---|---|
-| 1 | `[AGENT SYSTEM PROMPT]` | `config/prompt.md`; `_load_agent_prompt` for a custom agent | skipped on a slim resume |
+| 1 | `[AGENT SYSTEM PROMPT]` | `config/prompt.md`; `_load_agent_prompt` for a custom agent; for the installer-marked `kirocrew-captain` template, that same contract followed by the template's role section | skipped on a slim resume |
 | 2 | `[CRITICAL RULES]` | `_critical_rules_for` (runtime-conditional) | unless the agent sets `includeCrewContext: false` |
 | 3 | `[CURRENT DATE]` | `get_local_tz` + `KiroCrewConfig.timezone` | always |
 | 4 | `[CURRENT AGENT]` / `[RUNTIME]` | `_runtime_display_name`, trusted `runtime_source` from the dispatcher | when a session key exists |
@@ -72,7 +72,12 @@ ahead of every other block. Three rows are suppressed for it, each on the same
 `not essentials` gate: the member row (6), steering (12) and the memory family
 (15) — the envelope carries its own persona, project documents and memory
 binding, so re-injecting those would duplicate them (§5). Read the table as the
-V1 / non-member order.
+V1 / non-member order. Captain (the built-in `kirocrew-captain` member, a V2
+member) is the one member that gets something from Global memory in row 15: a
+read-only copy of Global `preferences.md` ahead of its `[Memory tools]` line,
+which also names its Captain-only `global_memory_recall` and
+`global_preference_add`. No other Global layer reaches it (see
+[memory-skills-hooks](../system-specs/modules/memory-skills-hooks.md#captains-memory)).
 
 Then the per-turn blocks of §2 follow, and the user's own text is last. This
 build happens *after* the user's message arrives, so it lands directly on

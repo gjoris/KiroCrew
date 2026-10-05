@@ -190,6 +190,16 @@ async def api_memory_recall(request: web.Request) -> web.Response:
             return _error("The member's recorded memory is unavailable.", "store_unavailable", 503)
     if refusal is not None:
         return refusal
+    return await recall_from_store(request, state, name)
+
+
+async def recall_from_store(request: web.Request, state: Any, name: str) -> web.Response:
+    """Answer ``?q=`` from the store *name* (``""`` is Global), already authorized.
+
+    The caller has decided which store this request may read; nothing here
+    re-derives it from the request. Shared by the session-bound recall above and
+    Captain's read-only Global recall (:mod:`.captain_memory`).
+    """
     query = request.query.get("q", "").strip()
     if not query or len(query) > MAX_RECALL_QUERY:
         return _error("A query of 1–2000 characters is required.", "invalid_memory_query")

@@ -9,6 +9,11 @@ from aiohttp import web
 
 if TYPE_CHECKING:
     from kiro_crew.dashboard.handlers.agents import (
+        ASSISTANT_MEMBER_PROTECTED,
+        ASSISTANT_MEMBER_PROTECTED_MESSAGE,
+        ASSISTANT_MEMBER_RESERVED,
+        ASSISTANT_MEMBER_RESERVED_MESSAGE,
+        ASSISTANT_NAME_TAKEN,
         KiroCrewConfig,
         UnknownMemoryStore,
         _AmbiguousTemplateName,
@@ -22,8 +27,10 @@ if TYPE_CHECKING:
         _spec_path_is_safe,
         _unlink_copy_unless_referenced,
         agent_state,
+        assistant_name_taken_message,
         clear_list_agents_cache,
         coerce_dict_section,
+        is_assistant_member,
         kiro_agents_dir_path,
         logger,
         memory_store_namespace_lock,
@@ -216,8 +223,37 @@ def _prune_private_copy_of_deleted_crew(crew: str, bound_template: str) -> bool:
     return True
 
 
+class _AssistantMemberProtected(Exception):
+    """Raised inside the delete's config mutation when the target is Captain."""
+
+
+def _assistant_reserved_response() -> web.Response:
+    return web.json_response(
+        {"error": ASSISTANT_MEMBER_RESERVED_MESSAGE, "code": ASSISTANT_MEMBER_RESERVED},
+        status=409,
+    )
+
+
+def _assistant_name_taken_response(shown: str) -> web.Response:
+    return web.json_response(
+        {"error": assistant_name_taken_message(shown), "code": ASSISTANT_NAME_TAKEN},
+        status=409,
+    )
+
+
+def _assistant_member_protected_response() -> web.Response:
+    return web.json_response(
+        {"error": ASSISTANT_MEMBER_PROTECTED_MESSAGE, "code": ASSISTANT_MEMBER_PROTECTED},
+        status=409,
+    )
+
+
 async def api_kirocrew_agent_delete(request: web.Request) -> web.Response:
-    """DELETE /api/agents/{name} — delete a Kiro Crew agent."""
+    """DELETE /api/agents/{name} — delete a Kiro Crew agent.
+
+    Captain (:func:`kiro_crew.agent_files.is_assistant_member`) is refused with
+    409 ``assistant_member_protected``: it is created once and never re-created.
+    """
 
     denied = await _require_owner(request, "agent.delete")
     if denied is not None:
@@ -227,6 +263,8 @@ async def api_kirocrew_agent_delete(request: web.Request) -> web.Response:
         cfg = KiroCrewConfig.load()
         if name not in cfg.agents:
             return web.json_response({"error": f"Agent '{name}' not found"}, status=404)
+        if is_assistant_member(name, cfg.agents[name]):
+            return _assistant_member_protected_response()
         if name == cfg.default_agent:
             return web.json_response(
                 {"error": f"Cannot delete default agent '{name}'. Change default_agent first."},
@@ -250,6 +288,8 @@ async def api_kirocrew_agent_delete(request: web.Request) -> web.Response:
                 ):
                     raise UnknownMemoryStore(f"Crew Member {name!r} became the default")
                 entry = agents[name]
+                if is_assistant_member(name, entry):
+                    raise _AssistantMemberProtected(name)
                 stores = coerce_dict_section(doc, "memory_stores")
                 store_name = entry.get("memory_store", "") if isinstance(entry, dict) else ""
                 record = stores.get(store_name)
@@ -292,7 +332,10 @@ async def api_kirocrew_agent_delete(request: web.Request) -> web.Response:
             _reclaim_deleted_member_crew_log(name, cfg)
             return retired_store
 
-        retired_store = await _drained_to_thread(_delete_member)
+        try:
+            retired_store = await _drained_to_thread(_delete_member)
+        except _AssistantMemberProtected:
+            return _assistant_member_protected_response()
         if retired_store:
             from kiro_crew.context import release_cached_memory_store
 

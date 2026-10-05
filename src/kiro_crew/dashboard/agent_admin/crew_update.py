@@ -13,6 +13,8 @@ if TYPE_CHECKING:
         CapabilityError,
         KiroCrewAgentConfig,
         KiroCrewConfig,
+        _assistant_name_taken_response,
+        _assistant_reserved_response,
         _avatar_stem,
         _carries_mask,
         _carry_motions_through_motionless_save,
@@ -42,6 +44,8 @@ if TYPE_CHECKING:
         _StaleBinding,
         _UnverifiableLineage,
         coerce_effort,
+        collides_with_assistant_name,
+        is_assistant_member,
         logger,
         normalize_agent_model,
         persist_member_config,
@@ -126,6 +130,9 @@ async def api_kirocrew_agent_update(request: web.Request) -> web.Response:
                 {"error": f"Agent '{name}' not found", "code": "agent_not_found"}, status=404
             )
         stored_target = current.agents[name].kiro_agent
+        if new_target != stored_target and is_assistant_member(name, current.agents[name]):
+            # Captain's identity is its key AND its template.
+            return _assistant_reserved_response()
         if new_target != stored_target and (
             not isinstance(new_target, str) or not TEMPLATE_NAME_RE.fullmatch(new_target)
         ):
@@ -244,6 +251,19 @@ async def api_kirocrew_agent_update(request: web.Request) -> web.Response:
                     {"error": model_reason, "code": "invalid_model"}, status=400
                 )
         agent = cfg.agents[name]
+        captain = is_assistant_member(name, agent)
+        if captain and "kiro_agent" in body and body["kiro_agent"] != agent.kiro_agent:
+            return _assistant_reserved_response()
+        if (
+            not captain
+            and isinstance(body.get("display_name"), str)
+            and (
+                taken := collides_with_assistant_name(
+                    body["display_name"].strip() or name, cfg.agents
+                )
+            )
+        ):
+            return _assistant_name_taken_response(taken)
         if "kiro_agent" in body and body["kiro_agent"] != agent.kiro_agent:
             new_target = body["kiro_agent"]
             if not isinstance(new_target, str) or not TEMPLATE_NAME_RE.fullmatch(new_target):

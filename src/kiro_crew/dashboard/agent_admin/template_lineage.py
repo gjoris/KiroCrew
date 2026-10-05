@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from kiro_crew.dashboard.handlers.agents import (
         _WINDOWS_RESERVED_NAMES,
+        ASSISTANT_MEMBER_NAME,
+        ASSISTANT_TEMPLATE_NAME,
         CapabilityError,
         _read_agent_spec,
         agent_spec_candidates,
@@ -203,7 +205,13 @@ def _foreign_private_copy_owner(crew: str, target: str) -> str | None:
     governance, not ownership — would then run the foreign crew's sessions on
     the private definition once the sidecar recovered. An unverifiable read
     raises ``_UnverifiableLineage``; every binding writer maps it to a 409.
+
+    ``kirocrew-captain`` is a singleton owned by the ``kirocrew-captain`` member: its
+    capability edits are installer-applied overrides, so a second member bound
+    to it would silently inherit Captain's approvals. It reads as that member's.
     """
+    if target == ASSISTANT_TEMPLATE_NAME:
+        return None if crew == ASSISTANT_MEMBER_NAME else ASSISTANT_MEMBER_NAME
     try:
         info = agent_state.get_fork_info(target, strict=True)
         if info is None and target:

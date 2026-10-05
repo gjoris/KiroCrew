@@ -46,6 +46,7 @@ from kiro_crew import model_registry, resource_status  # noqa: F401
 from kiro_crew._sqlite_compat import sqlite3
 from kiro_crew.agent import _prompt_path, _shipped_prompt, is_managed_prompt
 from kiro_crew.agent_discovery import agent_skill_globs
+from kiro_crew.agent_files import ASSISTANT_TEMPLATE_NAME
 from kiro_crew.agent_sdk.drivers import acp as acp_driver
 from kiro_crew.agent_sdk.provider_identity import PROVIDER_ACP, is_claude_code
 from kiro_crew.agent_spec_format import iter_agent_spec_files, parse_agent_spec_text
@@ -1660,6 +1661,46 @@ def _read_prompt_file(pp: Path) -> str:
             return ""
 
 
+def _default_contract(*, mode: str, is_cc: bool) -> str:
+    """The ordinary ``kirocrew`` contract, unresolved, or "".
+
+    On the Claude Code provider only the kiro-cli branding is rewritten; the
+    dashboard UI rules in it hold on every provider.
+    """
+    pp = _prompt_path()
+    logger.debug("Prompt selection: mode=%r → %s", mode, pp)
+    text = _read_prompt_file(pp)
+    if not text or not is_cc:
+        return text
+    text = text.replace("kiro-cli", "claude code")
+    text = re.sub(r"\bKiro\b", "Claude", text)
+    text = re.sub(r"\bkiro\b", "claude", text)
+    return text.strip()
+
+
+def _assistant_role_section(project: str | None) -> str:
+    """The Assistant template's role section, or "" when the file is not ours.
+
+    Only a spec carrying the installer's provenance mark
+    (:func:`kiro_crew.agent._is_installed_assistant_spec`) is composed with the
+    contract; a hand-authored file at that path keeps its own prompt.
+    """
+    from kiro_crew.agent import _ASSISTANT_PROMPT_HEADER, _is_installed_assistant_spec
+    from kiro_crew.agent_discovery import _read_agent_spec
+    from kiro_crew.member_essential_context import resolve_template_path
+
+    try:
+        path = resolve_template_path(ASSISTANT_TEMPLATE_NAME, project)
+        if path is None:
+            return ""
+        data = _read_agent_spec(path, operation="agent_prompt", source="context")
+    except (OSError, ValueError, FileTooLargeError):
+        return ""
+    if not isinstance(data, dict) or not _is_installed_assistant_spec(data):
+        return ""
+    return str(data["prompt"])[len(_ASSISTANT_PROMPT_HEADER) :].strip()
+
+
 class ContextBuilder:
     """Builds context for injection into ACP prompts.
 
@@ -2354,6 +2395,7 @@ class ContextBuilder:
         strict: bool = False,
         include_briefing: bool = True,
         desk_withheld: bool = False,
+        template_selected: bool = False,
     ) -> str:
         """Assemble the four-layer identity for a member's bound execution.
 
@@ -2364,6 +2406,7 @@ class ContextBuilder:
             strict=strict,
             include_briefing=include_briefing,
             desk_withheld=desk_withheld,
+            template_selected=template_selected,
         )
 
     def _build_v2_essentials(
@@ -2386,6 +2429,7 @@ class ContextBuilder:
         steering_dirs: tuple[str, ...] = (),
         desk_withheld: bool = False,
         provider_type: str = PROVIDER_ACP,
+        template_selected: bool = False,
     ) -> str:
         """Refresh complete member essentials without opening learned memory.
 
@@ -2410,6 +2454,7 @@ class ContextBuilder:
             steering_dirs=steering_dirs,
             desk_withheld=desk_withheld,
             provider_type=provider_type,
+            template_selected=template_selected,
         )
 
     def build_session_context(
@@ -2507,6 +2552,7 @@ class ContextBuilder:
                 steering_dirs=steering_dirs,
                 desk_withheld=_desk_withheld(execution_context, desk_member),
                 provider_type=provider_type,
+                template_selected=_template_selected_on_member_store(execution_context),
             )
 
         # Minimal V1 stays date/time + agent identity. Private V2 also carries
@@ -2653,7 +2699,9 @@ class ContextBuilder:
         # [PERMANENT RULES] fresh and fails closed on an unreadable file.
         if member_turn_context(member, MemberLifecycle.FRESH).deliver_section and not essentials:
             _member_section = self._build_member_section(
-                member, desk_withheld=_desk_withheld(execution_context, desk_member)
+                member,
+                desk_withheld=_desk_withheld(execution_context, desk_member),
+                template_selected=_template_selected_on_member_store(execution_context),
             )
             if _member_section:
                 append_required(_member_section)
@@ -2819,6 +2867,7 @@ class ContextBuilder:
             essentials=essentials,
             cfg=_cfg,
             query_text=query_text,
+            execution_context=execution_context,
         )
         _mark("memory")
 
@@ -2962,29 +3011,27 @@ class ContextBuilder:
         """
         is_custom = bool(agent) and agent != "kirocrew"
         agent_prompt: str
-        if is_cc and not is_custom:
+        assistant_role = (
+            _assistant_role_section(project) if agent == ASSISTANT_TEMPLATE_NAME else ""
+        )
+        if assistant_role:
+            # The Assistant template's file holds only its role section; the
+            # contract is the one an ordinary chat gets, resolved as it is
+            # there, and the role follows it below.
+            agent_prompt = _default_contract(mode=mode, is_cc=is_cc)
+        elif is_cc and not is_custom:
             # CC gets the same Kiro Crew persona prompt as kiro — including
             # the Output Format rules (diff blocks, image embeds, OPTIONS)
             # which are dashboard UI contracts, not kiro-specific. Only the
             # kiro-cli *branding* references are rewritten to claude code.
             # A custom agent keeps its own prompt on every provider.
-            try:
-                pp = _prompt_path()
-                agent_prompt = _read_prompt_file(pp)
-                agent_prompt = agent_prompt.replace("kiro-cli", "claude code")
-                agent_prompt = re.sub(r"\bKiro\b", "Claude", agent_prompt)
-                agent_prompt = re.sub(r"\bkiro\b", "claude", agent_prompt)
-                agent_prompt = agent_prompt.strip()
-            except Exception:
-                agent_prompt = ""
+            agent_prompt = _default_contract(mode=mode, is_cc=True)
         elif is_custom:
             agent_prompt = self._load_agent_prompt(
                 agent or "", project, owner_template=(agent or "") if private_owner else ""
             )
         else:
-            pp = _prompt_path()
-            logger.debug("Prompt selection: mode=%r → %s", mode, pp)
-            agent_prompt = _read_prompt_file(pp)
+            agent_prompt = _default_contract(mode=mode, is_cc=False)
         if not agent_prompt:
             return ""
         # Any host-derived token in this prompt must be snapshotted per session:
@@ -2996,6 +3043,8 @@ class ContextBuilder:
             else ""
         )
         agent_prompt = self._resolve_prompt_templates(agent_prompt, session_key or "", cap_figure)
+        if assistant_role:
+            agent_prompt = f"{agent_prompt.strip()}\n\n{assistant_role}"
         return self._substitute_bot_name(agent_prompt)
 
     def build_message(
@@ -3166,6 +3215,7 @@ class ContextBuilder:
                 steering_dirs=steering_dirs,
                 desk_withheld=_desk_withheld(execution_context, desk_member),
                 provider_type=provider_type,
+                template_selected=_template_selected_on_member_store(execution_context),
             )
         if _essentials and not is_new_session:
             parts.append(_essentials)
@@ -3300,7 +3350,9 @@ class ContextBuilder:
                     _resume_member = ""
                     if _member_turn.deliver_section:
                         _member_section = self._build_member_section(
-                            member, desk_withheld=_desk_withheld(execution_context, desk_member)
+                            member,
+                            desk_withheld=_desk_withheld(execution_context, desk_member),
+                            template_selected=_template_selected_on_member_store(execution_context),
                         )
                         if _member_section:
                             _resume_member = (
@@ -3431,7 +3483,9 @@ class ContextBuilder:
             # chokepoint consult above).
             if _member_turn.deliver_section:
                 _member_section = self._build_member_section(
-                    member, desk_withheld=_desk_withheld(execution_context, desk_member)
+                    member,
+                    desk_withheld=_desk_withheld(execution_context, desk_member),
+                    template_selected=_template_selected_on_member_store(execution_context),
                 )
                 if _member_section:
                     parts.append(_neutralize_structural_markers(_member_section))

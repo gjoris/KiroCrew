@@ -31,6 +31,12 @@ from enum import Enum
 from pathlib import Path
 
 from kiro_crew import platform_compat
+from kiro_crew.agent_files import (
+    ASSISTANT_MEMBER_NAME,
+    ASSISTANT_MEMBER_RESERVED,
+    ASSISTANT_NAME_TAKEN,
+    collides_with_assistant_name,
+)
 from kiro_crew.artifacts import slugify
 from kiro_crew.atomic_write import atomic_write, fsync_dir, read_bytes_with_retry
 from kiro_crew.config.paths import data_home
@@ -447,12 +453,15 @@ class NewCrewKey:
     """How a crew being created is keyed and labelled.
 
     ``taken`` is the name the user would see twice when the create must be
-    refused (``409 agent_exists``), else ``""``.
+    refused, else ``""``. ``code`` is the refusal: ``agent_exists``,
+    ``assistant_member_reserved`` (the key is Captain's, which only the installer
+    creates) or ``assistant_name_taken`` (the label equals Captain's).
     """
 
     key: str
     display_name: str
     taken: str
+    code: str = ""
 
 
 def key_new_crew(name: str, display_name: str, agents: Mapping[str, object]) -> NewCrewKey:
@@ -467,15 +476,32 @@ def key_new_crew(name: str, display_name: str, agents: Mapping[str, object]) -> 
     """
     if is_crew_id(name):
         key, label = name, display_name
+        if key == ASSISTANT_MEMBER_NAME:
+            return NewCrewKey(key, label, name, ASSISTANT_MEMBER_RESERVED)
         if key in agents:
-            return NewCrewKey(key, label, name)
+            return NewCrewKey(key, label, name, "agent_exists")
     else:
-        key, label = crew_id_for_display_name(name, agents), display_name or name
+        # Captain's key is never derived for a user crew, present or not.
+        taken = _KeysWithReserved(agents)
+        key, label = crew_id_for_display_name(name, taken), display_name or name
     shown = label or key
+    captain = collides_with_assistant_name(shown, agents)
+    if captain:
+        return NewCrewKey(key, label, captain, ASSISTANT_NAME_TAKEN)
     for other_key, other in agents.items():
         if (getattr(other, "display_name", "") or other_key) == shown:
-            return NewCrewKey(key, label, shown)
+            return NewCrewKey(key, label, shown, "agent_exists")
     return NewCrewKey(key, label, "")
+
+
+class _KeysWithReserved:
+    """*agents*' keys plus Captain's reserved key, as a :class:`Container`."""
+
+    def __init__(self, agents: Mapping[str, object]) -> None:
+        self._agents = agents
+
+    def __contains__(self, key: object) -> bool:
+        return key == ASSISTANT_MEMBER_NAME or key in self._agents
 
 
 def is_valid_member_name(value: object) -> bool:

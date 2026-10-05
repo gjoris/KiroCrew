@@ -1317,6 +1317,21 @@ def test_owned_parent_refreshes_real_plumbing_without_regranting_tools(editor, m
     assert spec_for(home, specs)["mcpServers"]["kirocrew-core"]["args"] == ["mcp-core", "--new"]
 
 
+def test_only_the_assistant_member_edits_the_assistant_singleton(editor):
+    """``kirocrew-captain`` is never forked: a member other than ``assistant``
+    bound to it is refused instead of receiving Captain's overrides."""
+    service, home, specs, parent = editor
+    parent.update(name="kirocrew-captain", prompt="installer prompt v1")
+    (specs / "kirocrew-captain.json").write_text(json.dumps(parent))
+    config = json.loads((home / "config.json").read_text())
+    config["agents"]["A"]["kiro_agent"] = "kirocrew-captain"
+    (home / "config.json").write_text(json.dumps(config))
+    loader._invalidate_config_cache()
+    with pytest.raises(CapabilityError, match="assistant_template_reserved"):
+        service.get("A")
+    assert agent_state.all_fork_info() == {}
+
+
 def test_retained_secret_is_bound_to_member_revision(editor):
     service, _, specs, parent = editor
     current = service.get("A")

@@ -622,6 +622,7 @@ _KIROCREW_MCP_SUBCOMMANDS = frozenset(
         "mcp-crew-log",
         "mcp-debug",
         "mcp-panel",
+        "mcp-guide",
     }
 )
 

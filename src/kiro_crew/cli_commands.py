@@ -40,6 +40,14 @@ from kiro_crew import (
 )
 from kiro_crew._sqlite_compat import sqlite3
 from kiro_crew.agent import reset_agent_model
+from kiro_crew.agent_files import (
+    ASSISTANT_MEMBER_PROTECTED_MESSAGE,
+    ASSISTANT_MEMBER_RESERVED,
+    ASSISTANT_MEMBER_RESERVED_MESSAGE,
+    ASSISTANT_NAME_TAKEN,
+    assistant_name_taken_message,
+    is_assistant_member,
+)
 from kiro_crew.apps.backend import recorded_backend_port
 from kiro_crew.apps.bridges import (
     SessionPointerCleanup,
@@ -1480,6 +1488,12 @@ def _handle_agent(args: argparse.Namespace) -> None:
         keyed = key_new_crew(
             args.name, (getattr(args, "display_name", None) or "").strip(), cfg.agents
         )
+        if keyed.code == ASSISTANT_MEMBER_RESERVED:
+            print(f"Error: {ASSISTANT_MEMBER_RESERVED_MESSAGE}", file=sys.stderr)
+            sys.exit(1)
+        if keyed.code == ASSISTANT_NAME_TAKEN:
+            print(f"Error: {assistant_name_taken_message(keyed.taken)}", file=sys.stderr)
+            sys.exit(1)
         if keyed.taken:
             print(f"Error: agent '{keyed.taken}' already exists", file=sys.stderr)
             sys.exit(1)
@@ -1548,6 +1562,13 @@ def _handle_agent(args: argparse.Namespace) -> None:
         if args.memory_store is not None and args.memory_store != prior_memory_store:
             print("Error: a member's memory cannot be rebound or shared", file=sys.stderr)
             sys.exit(1)
+        if (
+            args.kiro_agent is not None
+            and args.kiro_agent != agent.kiro_agent
+            and is_assistant_member(args.name, agent)
+        ):
+            print(f"Error: {ASSISTANT_MEMBER_RESERVED_MESSAGE}", file=sys.stderr)
+            sys.exit(1)
         if args.kiro_agent is not None:
             if not TEMPLATE_NAME_RE.fullmatch(args.kiro_agent):
                 print("Error: invalid kiro agent name", file=sys.stderr)
@@ -1580,6 +1601,9 @@ def _handle_agent(args: argparse.Namespace) -> None:
         if args.name not in cfg.agents:
             print(f"Error: agent '{args.name}' not found", file=sys.stderr)
             sys.exit(1)
+        if is_assistant_member(args.name, cfg.agents[args.name]):
+            print(f"Error: {ASSISTANT_MEMBER_PROTECTED_MESSAGE}", file=sys.stderr)
+            sys.exit(1)
         if args.name == cfg.default_agent:
             print(
                 f"Error: cannot delete default agent '{args.name}'",
@@ -1599,6 +1623,8 @@ def _handle_agent(args: argparse.Namespace) -> None:
                 isinstance(agent_section, dict) and agent_section.get("default_agent") == args.name
             ):
                 raise _CliConflict(f"cannot delete default agent '{args.name}'")
+            if is_assistant_member(args.name, agents[args.name]):
+                raise _CliConflict(ASSISTANT_MEMBER_PROTECTED_MESSAGE)
             del agents[args.name]
             return doc
 

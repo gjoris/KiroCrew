@@ -543,6 +543,74 @@ def all_fork_info() -> dict[str, dict]:
     return out
 
 
+#: Member-level capability overrides of an installer-owned singleton template
+#: (``kirocrew-captain``). Kept in this sidecar, not beside the spec, because
+#: it is sealed read-only for sandboxed agents: an override grants approvals, so
+#: the agent it governs must not be able to write its own.
+_MEMBER_OVERRIDES = "member_overrides"
+MEMBER_OVERRIDE_SECTIONS = ("mcpServers", "tools", "allowedTools", "autoApprove")
+
+
+def _empty_member_overrides() -> dict[str, dict]:
+    return {section: {} for section in MEMBER_OVERRIDE_SECTIONS}
+
+
+def get_member_overrides(name: str) -> dict[str, dict]:
+    """Read *name*'s persisted overrides strictly; absent means none.
+
+    Same row grammar as capability ``overrides`` (``{"action": "remove"}`` or
+    ``{"action": "set", "value": ...}``), limited to
+    :data:`MEMBER_OVERRIDE_SECTIONS`. A malformed entry raises rather than
+    reading as "no overrides", so a caller cannot silently drop a revocation.
+    """
+    with _lock:
+        value = _entry(_read(strict=True), name).get(_MEMBER_OVERRIDES)
+    result = _empty_member_overrides()
+    if value is None:
+        return result
+    if not isinstance(value, dict) or set(value) - set(MEMBER_OVERRIDE_SECTIONS):
+        raise ValueError("member_overrides_invalid")
+    for section, rows in value.items():
+        if not isinstance(rows, dict):
+            raise ValueError("member_overrides_invalid")
+        for key, row in rows.items():
+            if not isinstance(key, str) or not isinstance(row, dict):
+                raise ValueError("member_overrides_invalid")
+            if row == {"action": "remove"}:
+                continue
+            if (
+                row.get("action") != "set"
+                or set(row) != {"action", "value"}
+                or not _capability_value_valid(section, key, row["value"])
+            ):
+                raise ValueError("member_overrides_invalid")
+        result[section] = rows
+    return result
+
+
+def set_member_overrides(name: str, overrides: dict[str, dict]) -> None:
+    """Persist *name*'s overrides; an all-empty set removes the record."""
+    clean = {
+        section: dict(overrides.get(section) or {})
+        for section in MEMBER_OVERRIDE_SECTIONS
+        if overrides.get(section)
+    }
+    with _locked():
+        data = _read(strict=True)
+        entry = data.get(name)
+        if not isinstance(entry, dict):
+            entry = {}
+        if clean:
+            entry[_MEMBER_OVERRIDES] = clean
+        else:
+            entry.pop(_MEMBER_OVERRIDES, None)
+        if entry:
+            data[name] = entry
+        else:
+            data.pop(name, None)
+        _write(data)
+
+
 def prune(name: str) -> None:
     """Drop an agent's entry entirely (call when the agent is deleted)."""
     with _locked():

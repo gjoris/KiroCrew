@@ -16,6 +16,8 @@ place: add its filename to ``OWNED_KIRO_AGENT_FILES`` and every consumer
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 # The primary KiroCrew agent spec.
 AGENT_FILENAME = "kirocrew.json"
 
@@ -39,6 +41,73 @@ WORKER_AGENT_FILENAME = "kirocrew-worker.json"
 KNOWLEDGE_AGENT_FILENAME = "kirocrew-knowledge.json"
 RESEARCH_AGENT_FILENAME = "kirocrew-research.json"
 HEARTBEAT_AGENT_FILENAME = "kirocrew-heartbeat.json"
+# The personal-assistant template: the default toolset (or narrower) with a
+# prompt that teaches everyday help and crewmate drafting. A chat choice, not a
+# background file; nothing binds it unless a crew binding names it.
+ASSISTANT_AGENT_FILENAME = "kirocrew-captain.json"
+# The built-in crew member created once to run that template (Captain). A
+# separate member on Global memory: the reserved ``default`` member is never
+# rebound to it. The config KEY is Captain's identity and only the installer
+# creates it; ``display_name`` is a label the user may change.
+ASSISTANT_MEMBER_NAME = "kirocrew-captain"
+ASSISTANT_TEMPLATE_NAME = "kirocrew-captain"
+#: The label Captain shows while its ``display_name`` is empty.
+ASSISTANT_DEFAULT_DISPLAY_NAME = "Captain"
+#: Refusal code every delete path returns for Captain. Captain is created once
+#: by a one-time marker and never re-created, so a deleted Captain would stay
+#: gone for good.
+ASSISTANT_MEMBER_PROTECTED = "assistant_member_protected"
+ASSISTANT_MEMBER_PROTECTED_MESSAGE = (
+    "Captain is the built-in assistant crew member and cannot be deleted."
+)
+#: Refusal code for a user path that would create a member under Captain's key,
+#: or move Captain off its template.
+ASSISTANT_MEMBER_RESERVED = "assistant_member_reserved"
+ASSISTANT_MEMBER_RESERVED_MESSAGE = (
+    f"'{ASSISTANT_MEMBER_NAME}' is reserved for Captain, the built-in assistant crew member."
+)
+#: Refusal code for another member taking Captain's current display name.
+ASSISTANT_NAME_TAKEN = "assistant_name_taken"
+
+
+def assistant_name_taken_message(shown: str) -> str:
+    return f"'{shown}' is Captain's name; choose another name for this crewmate."
+
+
+def is_assistant_member(name: object, entry: object) -> bool:
+    """True when *name*/*entry* is Captain: the reserved key bound to its template.
+
+    *entry* is a config record, either the loaded dataclass or the raw
+    ``agents`` dict from ``config.json``.
+    """
+    if name != ASSISTANT_MEMBER_NAME:
+        return False
+    bound = entry.get("kiro_agent") if isinstance(entry, dict) else getattr(entry, "kiro_agent", "")
+    return bound == ASSISTANT_TEMPLATE_NAME
+
+
+def _display_name_of(entry: object) -> str:
+    raw = (
+        entry.get("display_name") if isinstance(entry, dict) else getattr(entry, "display_name", "")
+    )
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def assistant_shown_name(agents: Mapping[str, object]) -> str:
+    """Captain's current label in *agents*, or ``""`` when Captain is not there."""
+    entry = agents.get(ASSISTANT_MEMBER_NAME)
+    if entry is None or not is_assistant_member(ASSISTANT_MEMBER_NAME, entry):
+        return ""
+    return _display_name_of(entry) or ASSISTANT_DEFAULT_DISPLAY_NAME
+
+
+def collides_with_assistant_name(shown: object, agents: Mapping[str, object]) -> str:
+    """Captain's label when *shown* equals it (trimmed, case-insensitive), else ``""``."""
+    captain = assistant_shown_name(agents)
+    if not captain or not isinstance(shown, str):
+        return ""
+    return captain if shown.strip().casefold() == captain.casefold() else ""
+
 
 # Collective allowlists — the EXACT filenames KiroCrew owns in each dir. Used by
 # the Playwright convergence sweep (browser/setup.py) so it rewrites only files
@@ -56,6 +125,7 @@ OWNED_KIRO_AGENT_FILES = (
     KNOWLEDGE_AGENT_FILENAME,
     RESEARCH_AGENT_FILENAME,
     HEARTBEAT_AGENT_FILENAME,
+    ASSISTANT_AGENT_FILENAME,
 )
 
 # The specs that MUST exist for the product to work at all. kiro-cli resolves an

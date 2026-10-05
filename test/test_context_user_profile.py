@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from kiro_crew.config.loader import config_path
 from kiro_crew.context import ContextBuilder
 from kiro_crew.learn import LessonStore
@@ -181,13 +183,28 @@ class TestUserProfileSection:
         ctx = _builder(tmp_path).build_session_context()
         assert "if they ask for code, provide code" in ctx
 
-    def test_injected_for_custom_agents(self, tmp_path):
+    @pytest.mark.parametrize("agent_name", ["my-custom-agent", "kirocrew-captain"])
+    def test_injected_for_custom_agents(self, tmp_path, agent_name):
         """Profile describes the person, not the workspace — custom agents
         (which skip workspace identity) still get it."""
         _seed_profile("product-manager", "codes")
-        ctx = _builder(tmp_path).build_session_context(agent="my-custom-agent")
+        ctx = _builder(tmp_path).build_session_context(agent=agent_name)
         assert "[USER PROFILE]" in ctx
         assert "product manager" in ctx
+
+    def test_assistant_gets_the_users_preferences_with_the_profile(self, tmp_path):
+        """The Assistant reads Global memory, so the user's learned preferences
+        reach it exactly as they reach ordinary chat, beside the profile."""
+        _seed_profile("designer", "some")
+        builder = _builder(tmp_path)
+        prefs = tmp_path / "ws" / "memory" / "preferences.md"
+        prefs.parent.mkdir(parents=True, exist_ok=True)
+        prefs.write_text(
+            "# User Preferences\n\n- Prefers short answers with one example\n", encoding="utf-8"
+        )
+        ctx = builder.build_session_context(agent="kirocrew-captain")
+        assert "[USER PROFILE]" in ctx
+        assert "Prefers short answers with one example" in ctx
 
     def test_minimal_context_excludes_profile(self, tmp_path):
         """Minimal-context cron runs stay minimal."""

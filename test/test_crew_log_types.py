@@ -242,6 +242,26 @@ CANONICAL: dict[str, dict] = {
         "crew": "Fleet Conductor",
         "crew_key": "9f2c" + "0" * 60,
     },
+    "card/proposed": {
+        "slot": "member-kirocrew-captain",
+        "card_id": "cc_0a1b2c3d4e5f",
+        "kind": "setting.change",
+        "title": "Change chat.verbosity to brief",
+        "revision": 1,
+        "risk": "normal",
+        "turn": 3,
+        "mid": "m-7f3a",
+    },
+    "card/finished": {"card_id": "cc_0a1b2c3d4e5f", "status": "applied", "revision": 1},
+    "guide/offered": {
+        "slot": "member-kirocrew-captain",
+        "guide_id": "g_0a1b2c3d4e5f",
+        "actions": ["crewmate.create"],
+        "turn": 4,
+        "mid": "m-7f3b",
+    },
+    "guide/started": {"guide_id": "g_0a1b2c3d4e5f"},
+    "guide/finished": {"guide_id": "g_0a1b2c3d4e5f", "status": "completed"},
 }
 
 
@@ -287,7 +307,10 @@ def test_every_type_written_today_is_declared_and_nothing_else_is():
     # Subagents panel's durable half is a fold of this log, so a card the user cleared
     # has to be recorded here. It was held in a registry keyed on the run's folder, and
     # when that folder was reclaimed first the dismissed card came back.
-    assert len(SESSION_ENTRY_TYPES) == 35
+    # The five past that are Captain's change cards and guide offers: each proposal is
+    # a row of the conversation, and ``card/*`` / ``guide/*`` record the proposal and
+    # every outcome in the same session's history.
+    assert len(SESSION_ENTRY_TYPES) == 40
     # Nine types the vocabulary owns that nothing writes. Declaring one would state
     # a shape no writer produces, and the first emitter to land would have to
     # satisfy a contract written without it. They pass through undeclared instead.
@@ -365,6 +388,12 @@ def test_only_a_vocabulary_the_writer_clamps_is_enforced():
         ("work/recorded", "verdict"),
         ("work/recorded", "status"),
         ("work/recorded", "event_kind"),
+        # The card and guide stores' own finished statuses: the emitter refuses any
+        # other value before it builds the entry.
+        ("card/finished", "status"),
+        ("guide/finished", "status"),
+        # Dropped by the emitter, not refused, when it is not a known reason.
+        ("guide/finished", "reason"),
     }
     emitted = set(_types_with_a_producing_site())
     assert {spec_type for spec_type, _ in closed} <= emitted

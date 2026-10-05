@@ -1144,6 +1144,115 @@ class TestServerAppliers:
         )
 
     @pytest.mark.asyncio
+    async def test_a_stale_captain_spec_takes_the_failure_path(self) -> None:
+        """Captain's managed spec follows ``agent.model`` through the same rebuild.
+
+        When that rebuild leaves Captain's spec unrefreshed (an install that
+        raised, an unreadable spec or overrides) while ``kirocrew.json`` was
+        written, the applier must not report the default as applied: it notifies
+        once, pushes no refresh and re-raises so ConfigWatch retries. The warm
+        pool is still reconciled, because ``kirocrew.json`` WAS rebuilt.
+        """
+        from kiro_crew.agent_materialization import assistant_agent
+
+        sessions = SimpleNamespace(refresh_defaults=AsyncMock())
+        state = SimpleNamespace(
+            workflow_service=None,
+            channel_manager=None,
+            push_refresh=MagicMock(),
+            notify=MagicMock(),
+            sessions=sessions,
+        )
+        apply = self._register(state)["agent.model"].callback()
+
+        def _rebuild() -> tuple[Path, bool]:
+            assistant_agent._record_refresh_failure("Captain template install raised")
+            return (Path("/tmp/kirocrew.json"), True)
+
+        with (
+            patch("kiro_crew.agent.rebuild_agent_config_reporting", _rebuild),
+            pytest.raises(RuntimeError, match="Captain template install raised"),
+        ):
+            await apply(
+                ConfigChange(
+                    old=KiroCrewConfig(),
+                    new=KiroCrewConfig(),
+                    changed=frozenset({"agent.model"}),
+                )
+            )
+        sessions.refresh_defaults.assert_awaited_once()
+        state.push_refresh.assert_not_called()
+        state.notify.assert_called_once()
+        assert state.notify.call_args.args[:2] == (
+            "agent",
+            "Default model could not be applied",
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_preserved_captain_spec_is_not_a_failure(self) -> None:
+        """A foreign template or a dashboard pin records no failure: applied."""
+        from kiro_crew.agent_materialization import assistant_agent
+
+        state = SimpleNamespace(
+            workflow_service=None,
+            channel_manager=None,
+            push_refresh=MagicMock(),
+            notify=MagicMock(),
+        )
+        apply = self._register(state)["agent.model"].callback()
+
+        def _rebuild() -> tuple[Path, bool]:
+            # The intentional-preserve paths record ``None``.
+            assistant_agent._record_refresh_failure(None)
+            return (Path("/tmp/kirocrew.json"), True)
+
+        change = ConfigChange(
+            old=KiroCrewConfig(), new=KiroCrewConfig(), changed=frozenset({"agent.model"})
+        )
+        with patch("kiro_crew.agent.rebuild_agent_config_reporting", _rebuild):
+            await apply(change)
+        state.push_refresh.assert_called_once_with("agents")
+        state.notify.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_stale_verdict_from_an_earlier_rebuild_is_cleared(self) -> None:
+        """The applier clears the thread's verdict before its own rebuild."""
+        from kiro_crew.agent_materialization import assistant_agent
+
+        state = SimpleNamespace(
+            workflow_service=None,
+            channel_manager=None,
+            push_refresh=MagicMock(),
+            notify=MagicMock(),
+        )
+        apply = self._register(state)["agent.model"].callback()
+
+        def _rebuild() -> tuple[Path, bool]:
+            # Simulate a pool thread that still carries an older failure, with a
+            # rebuild that never reached the Captain step (a mocked rebuild).
+            return (Path("/tmp/kirocrew.json"), True)
+
+        orig_take = assistant_agent.take_refresh_failure
+        calls = {"n": 0}
+
+        def _take() -> str | None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                assistant_agent._record_refresh_failure("stale from an earlier rebuild")
+            return orig_take()
+
+        change = ConfigChange(
+            old=KiroCrewConfig(), new=KiroCrewConfig(), changed=frozenset({"agent.model"})
+        )
+        with (
+            patch("kiro_crew.agent.rebuild_agent_config_reporting", _rebuild),
+            patch.object(assistant_agent, "take_refresh_failure", _take),
+        ):
+            await apply(change)
+        state.push_refresh.assert_called_once_with("agents")
+        state.notify.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_successful_retry_notifies_that_the_saved_model_is_active(self) -> None:
         """Recovery must resolve the operator-visible failure state."""
         state = SimpleNamespace(

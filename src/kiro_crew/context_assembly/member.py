@@ -293,6 +293,7 @@ def build_member_section(
     strict: bool = False,
     include_briefing: bool = True,
     desk_withheld: bool = False,
+    template_selected: bool = False,
 ) -> str:
     """Assemble the four-layer identity for a member's bound execution.
 
@@ -406,11 +407,41 @@ def build_member_section(
     rules = _markers._scrub_member_payload(rules)
     briefing = _markers._scrub_member_payload(briefing)
 
-    identity = [
-        f"[MEMBER IDENTITY]\nYou are {member}. Not a generic assistant, and not an "
-        f"extension of the user: {member} is an identity of your own — your name, "
-        "your role, your memory of this thread, and your track record belong to you."
-    ]
+    # The Assistant identity belongs to the separate built-in ``kirocrew-captain``
+    # member only (its reserved key AND its own template), on its private store.
+    # The reserved ``default`` member keeps the ordinary identity whatever it is
+    # bound to.
+    from kiro_crew.agent_files import (
+        ASSISTANT_DEFAULT_DISPLAY_NAME,
+        ASSISTANT_MEMBER_NAME,
+        ASSISTANT_TEMPLATE_NAME,
+    )
+
+    assistant = (
+        member == ASSISTANT_MEMBER_NAME
+        and not template_selected
+        and crew is not None
+        and getattr(crew, "kiro_agent", "") == ASSISTANT_TEMPLATE_NAME
+    )
+    display_name = getattr(crew, "display_name", "") if assistant else ""
+    spoken_name = (
+        _markers._scrub_member_payload(display_name.strip())
+        if isinstance(display_name, str) and display_name.strip()
+        else ASSISTANT_DEFAULT_DISPLAY_NAME
+    )
+    identity = (
+        [
+            f"[MEMBER IDENTITY]\nYou are {spoken_name}. Introduce yourself to the user "
+            f"as {spoken_name}. Your member key ({member}) is for tool calls only: never "
+            "say it to the user, and never call yourself a default assistant.",
+        ]
+        if assistant
+        else [
+            f"[MEMBER IDENTITY]\nYou are {member}. Not a generic assistant, and not an "
+            f"extension of the user: {member} is an identity of your own — your name, "
+            "your role, your memory of this thread, and your track record belong to you."
+        ]
+    )
     if description:
         identity.append(f"Your role: {description}")
     if triggers:
@@ -508,6 +539,7 @@ def build_v2_essentials(
     steering_dirs: tuple[str, ...],
     desk_withheld: bool,
     provider_type: str,
+    template_selected: bool = False,
 ) -> str:
     """Refresh complete member essentials without opening learned memory.
 
@@ -555,8 +587,14 @@ def build_v2_essentials(
     include_project = not blocks_reads and _inclusion._group_included(
         context_groups, _inclusion.CONTEXT_GROUP_PROJECT
     )
+    # ``template_selected``: the turn runs another template on this member's
+    # store, so it is not the member itself (Captain's identity stays off it).
     identity = builder._build_member_section(
-        owner, strict=True, include_briefing=reads, desk_withheld=desk_withheld
+        owner,
+        strict=True,
+        include_briefing=reads,
+        desk_withheld=desk_withheld,
+        template_selected=template_selected,
     )
     # A validation pass measures the largest envelope any harness can build,
     # so it keeps inheritance and never reads kiro-cli's opt-out. On a normal
