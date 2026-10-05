@@ -83,6 +83,7 @@ async def add(
     self_armed: bool = False,
     loop_id: str | None = None,
     creation_surface: MonitorCreationSurface = MonitorCreationSurface.DASHBOARD,
+    default_patrol: bool = False,
 ) -> NudgeLoop:
     # CANCELLATION SAFETY: the mutate+persist runs as a SHIELDED task. If
     # the awaiting caller is cancelled mid-write, a bare await would release
@@ -114,6 +115,7 @@ async def add(
             self_armed=self_armed,
             loop_id=loop_id,
             creation_surface=creation_surface,
+            default_patrol=default_patrol,
         )
     )
     self._inflight_adds.add(inner)
@@ -165,6 +167,7 @@ async def _add_locked(
     self_armed: bool = False,
     loop_id: str | None = None,
     creation_surface: MonitorCreationSurface = MonitorCreationSurface.DASHBOARD,
+    default_patrol: bool = False,
 ) -> NudgeLoop:
     async with _maintenance_lock(self._base_dir):
         return await self._add_unserialized(
@@ -184,6 +187,7 @@ async def _add_locked(
             self_armed=self_armed,
             loop_id=loop_id,
             creation_surface=creation_surface,
+            default_patrol=default_patrol,
         )
 
 
@@ -206,6 +210,7 @@ async def _add_unserialized(
     self_armed: bool = False,
     loop_id: str | None = None,
     creation_surface: MonitorCreationSurface = MonitorCreationSurface.DASHBOARD,
+    default_patrol: bool = False,
 ) -> NudgeLoop:
     from kiro_crew import autonudge as seams  # read at call time: the facade imports us
 
@@ -219,6 +224,17 @@ async def _add_unserialized(
         # removal+add atomically, avoiding a duplicate blocking save here.
         existing = self._find_by_slot(slot_key)
         restore_existing_provider_credentials = False
+        # An agent's own create-only arm replaces the gateway's ACTIVE default
+        # patrol rather than meeting a 409 (``NudgeLoop.default_patrol``). A
+        # stopped default patrol keeps the ordinary retained-row rules below, so a
+        # person's stop of it is still evidence, and one default never displaces
+        # another.
+        displaces_default = bool(
+            existing is not None
+            and existing.default_patrol is True
+            and existing.active
+            and not default_patrol
+        )
         if existing:
             # Create-only (``replace_existing=False``) refuses ANY existing
             # record by default — the dashboard REST creates depend on that:
@@ -234,7 +250,11 @@ async def _add_unserialized(
             # record whose accepted wake is awaiting completion evidence
             # keeps its own refusal rather than having its correlation
             # orphaned by a replacement.
-            if not replace_existing and (existing.active or not replace_stopped):
+            if (
+                not replace_existing
+                and not displaces_default
+                and (existing.active or not replace_stopped)
+            ):
                 raise MonitorUpdateConflict("session already has an automation")
             existing_monitor = existing.monitor
             if (
@@ -256,6 +276,7 @@ async def _add_unserialized(
             if (
                 not replace_existing
                 and replace_stopped
+                and not displaces_default
                 and not _stopped_row_is_replaceable(existing)
             ):
                 # Owner ruling (option A): only system-imposed stops are
@@ -269,7 +290,14 @@ async def _add_unserialized(
                     "and is not replaceable by a re-arm; its owner must clear it "
                     "first from the dashboard's goal popover"
                 )
-            if existing_monitor is not None and existing_monitor.wake_in_flight:
+            # A default patrol's in-flight wake is usually the very turn issuing
+            # this arm; nothing waits on its completion once the agent's own loop
+            # replaces it, so it does not hold the replacement off.
+            if (
+                existing_monitor is not None
+                and existing_monitor.wake_in_flight
+                and not displaces_default
+            ):
                 raise MonitorUpdateConflict(
                     "existing monitor cannot be replaced while a wake is in flight"
                 )
@@ -358,6 +386,7 @@ async def _add_unserialized(
             gate=bool(gate or watch),
             banner=banner,
             self_armed=self_armed,
+            default_patrol=bool(default_patrol),
         )
         self._loops[loop.id] = loop
         # Persist WITHOUT blocking the event loop (no-blocking-call rule:
