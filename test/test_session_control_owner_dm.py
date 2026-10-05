@@ -1735,13 +1735,36 @@ def test_every_owner_dm_surface_opens_the_crew_log_from_its_dispatcher():
     the conversation under -- the source a tab on it states the same fact from, so
     the two writers of one log never take turns recording a move. Pinned off the
     dispatcher's source, so the next surface admitted as a conductor cannot re-open
-    the gaps this suite's opener tests closed."""
+    the gaps this suite's opener tests closed. A dispatcher riding the shared channel
+    pipeline declares ``Drift.OPENS_CREW_LOG`` and the pipeline makes the call."""
+    import ast
     import importlib
     import inspect
+
+    from kiro_crew.messaging import dispatch as pipeline
 
     for surface in sorted(sc.OWNER_DM_CONDUCTOR_SURFACES):
         dispatcher = importlib.import_module(f"kiro_crew.{surface}.transport_dispatch")
         source = inspect.getsource(dispatcher)
+        if "ChannelTurns(" in source:
+            # The drift handed over is the declared set itself, not one with the
+            # opener carved out of it (``DISCORD_DRIFT - {...}`` reads as passed).
+            drifts = [
+                kw.value
+                for node in ast.walk(ast.parse(source))
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "ChannelTurns"
+                for kw in node.keywords
+                if kw.arg == "drift"
+            ]
+            assert drifts and all(
+                isinstance(value, ast.Name) and value.id == f"{surface.upper()}_DRIFT"
+                for value in drifts
+            ), f"{surface}: ChannelTurns is not handed {surface.upper()}_DRIFT as declared"
+            drift = getattr(pipeline, f"{surface.upper()}_DRIFT", frozenset())
+            assert pipeline.Drift.OPENS_CREW_LOG in drift, f"{surface}: pipeline opens no log"
+            source = inspect.getsource(pipeline)
         assert "open_turn_crew_log(" in source, f"{surface}: dispatcher opens no crew log"
         assert "predecessor_sid(" in source, f"{surface}: opener would cite no predecessor"
         assert "workspace=slot_workspace(" in source, f"{surface}: opener states no workspace"

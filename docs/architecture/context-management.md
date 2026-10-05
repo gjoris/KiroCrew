@@ -296,11 +296,13 @@ on its next match, never drops the skill.
 
 kiro-cli compacts its own window and drops the session-start blocks with it.
 `SessionManager.mark_needs_reinjection` arms a one-shot flag on confirmed
-compaction; the next turn reads it through `messaging/dispatch.py` →
-`consume_reinjection` and passes `needs_reinjection=True`. Every turn loop that can
-compact (calls `check_context_usage` or `compact_if_needed`) must consume the flag,
-forward it and `rearm_reinjection` it when the turn does not land, or delegate to
-`drive_turn`; `test/test_reinjection_gate.py` pins that per module. `build_message` then
+compaction; the next turn reads it through `consume_reinjection` (owned by
+`messaging/turn_bracket.py`, re-exported from `messaging/dispatch.py`) and passes
+`needs_reinjection=True`. Every turn loop that can compact (calls
+`check_context_usage` or `compact_if_needed`) must consume the flag, forward it and
+`rearm_reinjection` it when the turn does not land, or delegate to `drive_turn` or
+answer through `messaging.dispatch.ChannelTurns`; `test/test_reinjection_gate.py`
+pins that per module. `build_message` then
 re-adds, once:
 
 1. the memory activity index and the `[Memory tools]` line;
@@ -648,7 +650,7 @@ per-member permission control; both exist today, in the forms above.
 | Trigger matching, and its model-picked override | `src/kiro_crew/trigger_match.py`, `src/kiro_crew/skills.py` (`get_triggered_skills`), `src/kiro_crew/skill_runtime/delivery.py` (`split_triggered`, `trigger_hint`), `src/kiro_crew/decisions/points/skills_select.py` |
 | Which agents get skills | `src/kiro_crew/context.py` (`_skills_injection_plan`), `src/kiro_crew/agent_discovery.py` (`agent_skill_globs`, `expand_skill_uri`) |
 | Steering and hooks | `src/kiro_crew/context.py` (`_load_steering_resources`, `steering_target_admissible`), `src/kiro_crew/hooks.py` |
-| Post-compaction re-injection | `src/kiro_crew/messaging/dispatch.py` (`consume_reinjection`, `rearm_reinjection`) |
+| Post-compaction re-injection | `src/kiro_crew/messaging/turn_bracket.py` (`TurnBracket`, `consume_reinjection`, `rearm_reinjection`; re-exported by `messaging/dispatch.py`) |
 | Ledger snapshot on nudge turns | `src/kiro_crew/session_ledger.py` (`render_snapshot`), `src/kiro_crew/dashboard/handlers/autonudge.py` |
 | Sub-agent context scope | `src/kiro_crew/subagent.py` (`_context_groups_of`), `src/kiro_crew/mcp_tools/spawn.py` |
 | Sub-agent prompt assembly, shared vs dedicated | `src/kiro_crew/subagent_manager/run.py` |

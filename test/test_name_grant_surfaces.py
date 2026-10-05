@@ -591,12 +591,11 @@ class TestTurnDriverSurface:
         # surface's one security decision to an unattributable row.
         import inspect
 
-        from kiro_crew.discord import transport_dispatch as discord_dispatch
         from kiro_crew.messaging import dispatch
         from kiro_crew.slack import transport_dispatch as slack_dispatch
         from kiro_crew.telegram import transport_dispatch as telegram_dispatch
 
-        for mod in (dispatch, slack_dispatch, discord_dispatch, telegram_dispatch):
+        for mod in (dispatch, slack_dispatch, telegram_dispatch):
             assert "audit_session_key=" in inspect.getsource(mod), mod.__name__
 
 
