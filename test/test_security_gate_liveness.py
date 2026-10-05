@@ -189,7 +189,19 @@ def _url_payload_command(n: int) -> str:
 #: safe to withhold, and window classification with whole-run context that exempts
 #: only windows sharing ≥ 24 bytes with that id while every other positive window
 #: redacts each piece it touches. One mechanism, no new pass.
-_PACKAGE_LINE_BUDGET = 28_551
+#:
+#: Raised again for ``is_sensitive_prevalidated_bounded_path`` in ``paths.py`` and the
+#: ``anchors_inline`` seam that backs it. A path validated on the event loop must match
+#: its already-resolved candidate tail LEXICALLY (never re-resolve an unheld tail that
+#: could sit on a stalled share) yet still resolve its ``$HOME`` anchors through the
+#: BOUNDED resolver pool, so one stuck anchor costs the pool's time limit rather than
+#: freezing the whole loop. The two concerns were tied to a single ``pre_resolved`` flag;
+#: the seam splits them so the candidate stays lexical while the anchors go bounded. The
+#: cost is the new entry point, the seam parameter threaded through ``_path_in_home_dirs``
+#: and the keystone helper, and the facade machinery for one more exported name -- an
+#: owner-table row, a manifest row and a ``TYPE_CHECKING`` line. No new matching pass and
+#: no threshold moved; the fence's lexical-tail property is unchanged.
+_PACKAGE_LINE_BUDGET = 28_568
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second
