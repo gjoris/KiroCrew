@@ -65,6 +65,16 @@ def _fresh_cache() -> "object":
 
 
 @pytest.fixture(autouse=True)
+def _library_only_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the default-on intro, which joins any manifest's pool.
+
+    These tests are about the hosted library replacing the bundled one; the
+    default-on carry-over has its own test in ``test_feature_videos.py``.
+    """
+    monkeypatch.setattr(fv, "CATALOG", tuple(e for e in fv.CATALOG if not e.default_on))
+
+
+@pytest.fixture(autouse=True)
 def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """A test that forgets to install a fake must fail, never reach the network."""
 
@@ -398,6 +408,18 @@ class TestManifestParsing:
     def test_a_sane_duration_is_kept(self) -> None:
         manifest = manifest_mod.parse_manifest(_document(entries=[_entry(duration_s=18)]))
         assert manifest is not None and manifest.entries[0].duration_s == 18.0
+
+    def test_a_safe_cta_route_is_kept(self) -> None:
+        manifest = manifest_mod.parse_manifest(_document(entries=[_entry(cta_route="/members")]))
+        assert manifest is not None and manifest.entries[0].cta_route == "/members"
+
+    def test_an_unsafe_cta_route_drops_the_cta_not_the_entry(self) -> None:
+        """The clip is still a valid intro; it falls back to the plain footer."""
+        manifest = manifest_mod.parse_manifest(
+            _document(entries=[_entry(cta_route="https://evil.example")])
+        )
+        assert manifest is not None and len(manifest.entries) == 1
+        assert manifest.entries[0].cta_route == ""
 
     def test_a_foreign_schema_is_rejected(self) -> None:
         assert manifest_mod.parse_manifest(_document(schema="something-else")) is None

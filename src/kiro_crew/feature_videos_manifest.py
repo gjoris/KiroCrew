@@ -178,6 +178,26 @@ _SAFE_BASENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 #: A 64-character lowercase hex digest.
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
+#: A dashboard-internal route an intro's "Try it" button navigates to: lowercase
+#: path segments and an optional flat query. No scheme, host, ``//`` or ``..``,
+#: so a catalog value can only move the user inside this dashboard.
+_CTA_ROUTE_RE = re.compile(
+    r"^(/[a-z0-9-]+)+(\?[a-z0-9_-]+=[a-z0-9_-]+(&[a-z0-9_-]+=[a-z0-9_-]+)*)?$"
+)
+
+
+def validate_cta_route(value: object) -> str:
+    """Return *value* if it is a safe in-dashboard route, else ``""``.
+
+    Shared by the bundled catalog and the manifest parser, so both sources admit
+    exactly the same routes. An empty string means "this intro has no CTA", which
+    the modal renders as the plain "Got it" footer.
+    """
+    if isinstance(value, str) and len(value) <= 200 and _CTA_ROUTE_RE.match(value):
+        return value
+    return ""
+
+
 #: A release folder name. This is a path segment under the cache root AND a URL
 #: segment, so it is validated as strictly as a filename: digits and dots only,
 #: each component bounded.
@@ -322,6 +342,8 @@ class ManifestEntry:
     doc: str
     used_when: tuple[str, ...] = ()
     min_version: str = ""
+    #: In-dashboard route for the intro's "Try it" button, or ``""`` for none.
+    cta_route: str = ""
 
 
 @dataclass(frozen=True)
@@ -877,6 +899,12 @@ def _parse_entry(
         else ()
     )
     duration = _bounded_duration(raw.get("duration_s", 0.0))
+    raw_cta = raw.get("cta_route", "")
+    cta_route = validate_cta_route(raw_cta)
+    if raw_cta and not cta_route:
+        # Dropping the CTA rather than the entry: the clip is still a valid intro,
+        # it just falls back to the "Got it" footer.
+        logger.warning("hosted feature video %r: unsafe cta_route %r ignored", video_id, raw_cta)
     return ManifestEntry(
         id=video_id,
         feature=str(raw.get("feature", video_id)),
@@ -891,6 +919,7 @@ def _parse_entry(
         doc=doc,  # type: ignore[arg-type]
         used_when=signals,
         min_version=min_version,
+        cta_route=cta_route,
     )
 
 
