@@ -36,12 +36,12 @@ false-positive fix looks like.
 
 ### "Refused" means the whole composite, not just the rule catalog
 
-A shell command at `hooks.on_tool_call` is refused by four checks, and this gate
-runs all four in the same order, reporting which one decided:
+A shell command at `hooks.on_tool_call` is refused by three checks on its text,
+and this gate runs all three in the same order, reporting which one decided:
 
 | Tier | Check | Lives in |
 |---|---|---|
-| `sensitive-path` | `sensitive_path_refusal` — the reason-returning path fence built on `is_sensitive_path` | `security/paths.py` |
+| `sensitive-path` | `sensitive_path_refusal` — applied by the gate to titles and file paths, NOT measured here: the gate spares a sandboxed shell's own command text from it | `security/paths.py` |
 | `sensitive-bash` | `is_sensitive_bash_command` — scan ceiling, IMDS reach, env-credential detector | `security/paths.py` |
 | `exfil` | `audit_bash_exfiltration` — egress and reverse-shell shapes | `security/exfil.py` |
 | `deny-rules` | `is_denied` — the rule catalog and the argv-structural floors | `security/__init__.py` |
@@ -52,10 +52,13 @@ tightening there would run it, come back empty, and leave the green badge
 standing as evidence the question had been asked. The tier is reported because
 "the path fence refused it" and "a catalog rule matched it" need different fixes.
 
-The list is **pinned, not asserted**: `test/test_deny_diff.py` reads the checks
-out of the hooks gate's own source and compares them with the script's declared
-tier table, so adding a fifth check over there reds this gate instead of silently
-escaping it.
+The list is **read, not restated**: the script measures the gate's own
+`hooks.SHELL_DENY_TIERS` — the shell checks of its tier table, `hooks.GATE_TIERS`,
+written out as a literal — which it reads with `ast.literal_eval` from the tree the
+harness runs from, never from a tree it classifies. `test/test_gate_tiers.py` pins
+that literal equal to the table's shell projection, pins that every per-target rule
+but the path rule names its shell check, and reds on any added row, so a check
+added to the gate is measured on the next run instead of silently escaping it.
 
 Every check is called with its default enabled set, which fails closed to every
 built-in rule enabled — the strictest posture an operator can be running, and the
@@ -64,10 +67,11 @@ only one that needs no config on the runner.
 ### A PR that ADDS a deny check
 
 That is the gate's primary use case, and it needs one rule to work at all. The
-child is always this script at head, so it iterates head's tier table against
-whichever tree it is pointed at — and the base tree of a check-adding PR has no
-such function. Treating that as an error would exit 2 on exactly the tightening
-the gate exists to measure.
+table is the harness's (in this lane the change's own checkout, so head's), and the
+script hands that one table to the child for both trees, so the base tree of a
+check-adding PR lacks the `kiro_crew.security` attribute the new row names.
+Treating that as an error would exit 2 on exactly the tightening the gate exists to
+measure.
 
 So a tier absent at **base** is skipped: a check that did not exist there refused
 nothing there, which is the truth, and the new check's refusals at head then
@@ -103,11 +107,11 @@ fails the job — a differential that could not run is not a pass.
 
 ### What a green does not cover
 
-The gate calls the four `security.*` checks directly, so it measures the **rules**,
+The gate calls the three `security.*` checks directly, so it measures the **rules**,
 not `hooks.py`'s own composition of them: how the targets are built, the
 `raw_params` application of the path fence, the context-derived enabled set. A
 tightening implemented inside `hooks.py` itself runs this gate — `hooks.py` is in
-its trigger paths — and comes back empty, because none of the four functions
+its trigger paths — and comes back empty, because none of the three functions
 changed.
 
 The tier pin narrows this but does not close it: it catches a check *added* to the
