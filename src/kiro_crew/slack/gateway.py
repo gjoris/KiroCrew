@@ -1829,6 +1829,12 @@ class GatewayOrchestrator:
                     )
                     try:
                         outcome = await asyncio.wait_for(pending.future, timeout=approval_timeout)
+                        # Answered on Slack or the dashboard: a loop paused for
+                        # approval in this thread resumes.
+                        if nudge_key:
+                            from kiro_crew.autonudge import release_approval_hold_for
+
+                            release_approval_hold_for(nudge_key, why="an approval was answered")
                     except asyncio.TimeoutError:
                         outcome = "rejected"
                         # Nobody answered on either surface -- this branch also
@@ -7679,6 +7685,8 @@ class GatewayOrchestrator:
         def _observer(event: str, loop: NudgeLoop | None) -> None:
             if event == "expired" and loop is not None:
                 self._notify_nudge_expired(loop)
+            elif event == "held" and loop is not None:
+                self._notify_nudge_held(loop)
             elif (
                 loop is not None
                 and is_structured_monitor_loop(loop)
@@ -7715,6 +7723,9 @@ class GatewayOrchestrator:
                     # REST list already.
                     "next_due_ts": loop.next_due_ts,
                     "stopped_reason": loop.stopped_reason,
+                    # An ACTIVE loop holding for an unanswered approval; the
+                    # popover words it as paused.
+                    "approval_stalled": bool(loop.approval_stalled),
                 }
                 if is_structured_monitor_loop(loop):
                     assert loop.monitor is not None
@@ -8108,6 +8119,33 @@ class GatewayOrchestrator:
                         loop.monitor.stopped_at,
                     ):
                         _schedule_terminal_notification(loop, terminal_key)
+
+    def _notify_nudge_held(self, loop: NudgeLoop) -> bool:
+        """Tell the user once that a loop is paused for an unanswered approval.
+
+        Sent when the hold is recorded, never per tick: a held loop fires
+        nothing, so this is the one place a person away from the session learns
+        that it is waiting for them, and what resumes it. Same meta and channel
+        rules as :meth:`_notify_nudge_expired`, and best-effort for the same
+        reason (it runs inside ``_emit``'s observer loop).
+        """
+        if not self.dashboard_state:
+            return False
+        try:
+            key = loop.slot_key
+            meta = None if is_channel_key(key) else self._notif_meta(f"dashboard:{key}")
+            title = "Monitoring loop paused — a tool approval went unanswered"
+            body = (
+                f"The loop is paused at cycle {loop.cycle_count} and spends no "
+                "cycles or time budget while it waits. It resumes by itself when "
+                "you answer an approval in that session, send a message there "
+                "from the dashboard, or press Play in its goal popover."
+            )
+            self.dashboard_state.notify("agent", title, body, meta=meta, channel=MONITOR_CHANNEL)
+            return True
+        except Exception:
+            logger.debug("AutoNudge hold notification failed", exc_info=True)
+            return False
 
     def _notify_nudge_expired(self, loop: NudgeLoop) -> bool:
         """Notify the user that a monitoring loop stopped at a terminal bound.

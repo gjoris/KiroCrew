@@ -98,6 +98,9 @@ export interface LegacyGoalLoop {
   nextDueAt?: number
   maxRuntimeSecs?: number
   stoppedReason: string
+  /** An active loop holding for an unanswered approval (the REST row's and
+   *  frame's `approval_stalled`). Present only when true. */
+  approvalStalled?: boolean
   /** The kill-switch file the server substitutes for `{{STOP_FILE}}` at fire
    *  time; '' when the loop was armed with none. Carried by the REST reads
    *  (`asdict(loop)`), not by the websocket frame, which withholds paths -- so
@@ -365,6 +368,7 @@ export function normalizeAutomationRecord(raw: unknown): AutomationRecord | null
       nextDueAt: finite(loop.next_due_ts),
       maxRuntimeSecs: count(loop.max_runtime_secs),
       stoppedReason: text(loop.stopped_reason),
+      ...(loop.approval_stalled === true ? { approvalStalled: true } : {}),
       ...(typeof loop.stop_sentinel_path === 'string'
         ? { stopSentinelPath: loop.stop_sentinel_path }
         : {}),

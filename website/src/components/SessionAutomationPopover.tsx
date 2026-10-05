@@ -130,6 +130,8 @@ function legacyWire(loop: LegacyGoalLoop): AutoNudgeLoop {
     // The goal editor words a paused loop by this field; dropping it rendered
     // every inactive loop, a fresh pause included, as a bare stop.
     stopped_reason: loop.stoppedReason,
+    // A held loop reads and acts paused only when this rides along.
+    ...(loop.approvalStalled ? { approval_stalled: true } : {}),
     ...(loop.stopSentinelPath !== undefined ? { stop_sentinel_path: loop.stopSentinelPath } : {}),
     ...(loop.judge !== undefined ? { judge: loop.judge } : {}),
     ...(loop.judge_last_verdict !== undefined
