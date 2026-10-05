@@ -760,19 +760,53 @@ async def _run_until(shutdown, done: asyncio.Event, **kwargs):
     return await task
 
 
+def _record_standings(monkeypatch) -> list:
+    """Every refusal the watchdog stands on, in the order it scheduled them."""
+    from kiro_crew.dashboard import stale_asset_watchdog
+
+    made: list = []
+
+    class _Recorded(stale_asset_watchdog._Standing):
+        def __init__(self, **fields):
+            super().__init__(**fields)
+            made.append(self)
+
+    monkeypatch.setattr(stale_asset_watchdog, "_Standing", _Recorded)
+    return made
+
+
+def _assert_backed_off(asks, backoffs):
+    """Each re-ask waited out the whole backoff of the refusal standing before it.
+
+    Read from the refusal the watchdog scheduled, not from the gaps between asks: a
+    15.6 ms Windows clock can read a 20 ms and a 40 ms wait as the same three ticks.
+    """
+    assert asks[0][1] is None, "the first ask is the confirm-and-drain pass's own"
+    assert [standing.backoff for _, standing in asks[1:]] == backoffs
+    for (asked_before, _), (asked_at, standing) in zip(asks, asks[1:]):
+        # Stamped `loop.time() + backoff` after the ask before it answered, on the same
+        # clock, so never earlier than that ask plus the backoff (equal within a tick).
+        due = asked_before + standing.backoff
+        assert standing.until >= due, f"due again at {standing.until}, before {due}"
+        # The gate's own comparison: asked only once `loop.time() < until` is false.
+        assert standing.until <= asked_at, f"asked at {asked_at}, before {standing.until}"
+
+
 @pytest.mark.asyncio
-async def test_a_refused_relaunch_stays_up_says_so_once_and_backs_off(caplog):
+async def test_a_refused_relaunch_stays_up_says_so_once_and_backs_off(caplog, monkeypatch):
     """Asked again on a doubling backoff, without the confirm and drain each tick."""
     caplog.set_level(logging.WARNING, logger=_WATCHDOG_LOGGER)
     shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
-    asked_at: list[float] = []
+    standings = _record_standings(monkeypatch)
+    asks: list[tuple[float, object]] = []
     drains = {"n": 0}
     enough = asyncio.Event()
 
     def _check():
-        asked_at.append(loop.time())
-        if len(asked_at) >= 5:
+        # When it was asked, and the refusal that was standing while it waited.
+        asks.append((loop.time(), standings[-1] if standings else None))
+        if len(asks) >= 5:
             loop.call_soon_threadsafe(enough.set)
         return _verdict("REFUSED", "its supervisor's command (/old/kirocrew) is missing")
 
@@ -791,25 +825,26 @@ async def test_a_refused_relaunch_stays_up_says_so_once_and_backs_off(caplog):
     # One confirm-and-drain pass (the drain is counted again after the check),
     # then only the backoff's re-asks.
     assert drains["n"] == 2
-    gaps = [b - a for a, b in zip(asked_at[1:], asked_at[2:])]
-    assert all(later > earlier for earlier, later in zip(gaps, gaps[1:]))
+    # From one 0.01 s interval, doubling on each refusal.
+    _assert_backed_off(asks[:5], [0.01, 0.02, 0.04, 0.08])
 
 
 @pytest.mark.asyncio
-async def test_an_inconclusive_recheck_does_not_lift_a_refusal(caplog):
+async def test_an_inconclusive_recheck_does_not_lift_a_refusal(caplog, monkeypatch):
     """A flapping check: one CRITICAL, one drain, and the backoff keeps growing."""
     caplog.set_level(logging.WARNING, logger=_WATCHDOG_LOGGER)
     shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
-    asked_at: list[float] = []
+    standings = _record_standings(monkeypatch)
+    asks: list[tuple[float, object]] = []
     drains = {"n": 0}
     enough = asyncio.Event()
 
     def _check():
-        asked_at.append(loop.time())
-        if len(asked_at) >= 6:
+        asks.append((loop.time(), standings[-1] if standings else None))
+        if len(asks) >= 6:
             loop.call_soon_threadsafe(enough.set)
-        if len(asked_at) % 2:
+        if len(asks) % 2:
             return _verdict("REFUSED", "its supervisor's command (/old/kirocrew) is missing")
         raise OSError("stalled mount")
 
@@ -825,8 +860,8 @@ async def test_an_inconclusive_recheck_does_not_lift_a_refusal(caplog):
     assert fired is False
     assert len(_records(caplog, level=logging.CRITICAL)) == 1
     assert drains["n"] == 2
-    gaps = [b - a for a, b in zip(asked_at[1:], asked_at[2:])]
-    assert all(later > earlier for earlier, later in zip(gaps, gaps[1:]))
+    # The inconclusive asks doubled the standing refusal's backoff too, not reset it.
+    _assert_backed_off(asks[:6], [0.01, 0.02, 0.04, 0.08, 0.16])
 
 
 @pytest.mark.asyncio
