@@ -942,6 +942,12 @@ class OrphanStallMonitor(ManagerComponent):
                 )
             except Exception:
                 logger.debug("Reaper: live-cost sample failed", exc_info=True)
+            # A row the sweep just settled owes no start price any more, so a
+            # start waiting for memory is re-checked against the lower bar.
+            try:
+                self._manager._admission.note_settled_rows()
+            except Exception:
+                logger.debug("Reaper: settle wake failed", exc_info=True)
             try:
                 await asyncio.get_running_loop().run_in_executor(
                     maintenance_executor(), self._manager._refresh_learned_settled

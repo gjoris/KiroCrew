@@ -27,6 +27,17 @@ about whether a subagent's own process is healthy. What the floor cannot see --
 provider 429s (scoped, below), attributable timeouts, slow or failing MCP
 servers, fd and process exhaustion -- is what still cuts the execution cap.
 
+**Memory waits are admission's, not the controller's.** With the count bounds
+gone, memory is the pool every chat's subagents share, and the two rules that
+keep it fair live in the spawn gate, not here ([subagent.md](subagent.md),
+*Memory waits: event wake and the per-lane share*): a start waiting for memory
+is re-checked on the events that move memory (a run's terminal, a warming row
+settling, a wait ending, a sampler that runs only while a start waits), each
+one host reading that starts only what now fits, instead of on a fixed poll,
+and while another chat waits for memory, a chat already running its share
+of dedicated children does not get the next memory admission. Neither reads or
+writes the effective cap, and the controller's own sampling is unchanged.
+
 ## Modules
 
 | Module | Role |
