@@ -384,16 +384,14 @@ class TestOneHome:
 # ── the pool caller ───────────────────────────────────────────────────────
 
 
-def _make_pool_key(server: str = "test-server", agent: str = "test-agent") -> PoolKey:
+def _make_pool_key(server: str = "test-server") -> PoolKey:
     return PoolKey(
         server_name=server,
-        agent_name=agent,
         command_args_hash="abc123",
         effective_env_hash="def456",
         work_dir="/tmp/test",
         binary_version="1.0",
         os_uid=1000,
-        config_snapshot_hash="jkl012",
     )
 
 

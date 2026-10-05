@@ -22,10 +22,11 @@ approval posture (``test_approval_posture_never_splits_the_pool``) AND each
 agent keeps its own approval surface (``test_each_agent_keeps_its_own_*``).
 Sharing a process is only safe because the second one holds.
 
-``agent_name`` is itself a dimension, so the sharing assertions hold it equal
-and run once per agent. What they isolate is the four fields, not agent
-identity: two differently-named agents get two backends whatever these four
-say.
+``agent_name`` is not a dimension either, so the sharing assertions hold it
+equal and run once per agent only to keep each one about the four fields
+alone. Two differently-named agents declaring a server identically reach ONE
+backend; what partitions them is a declared difference -- command, env, work
+dir, binary, uid.
 """
 
 from __future__ import annotations
@@ -126,17 +127,28 @@ def test_approval_posture_never_splits_the_pool(tmp_path, agent_name) -> None:
     assert permissive == strict
 
 
-def test_two_agents_still_get_two_backends(tmp_path) -> None:
-    """The limit of what this change buys, pinned so nobody reads the test
-    above as "two agents now share a process".
+def test_two_agents_with_identical_posture_share_one_backend(tmp_path) -> None:
+    """One server, two named agents, identical posture: ONE backend.
 
-    ``agent_name`` is a dimension, so one server reached by two named agents
-    is still two processes even with identical posture. Taking the four fields
-    out of the key is what makes posture stop mattering; whether agent
-    identity should partition the pool is a separate question.
+    ``agent_name`` is not a dimension, so two agents that declare a server
+    identically asked for the same process and get it. Driven through the same
+    real path as the rest of this module -- rewriter wraps the entry, the stub
+    parses its flags back, ``from_register`` reads the payload -- so this is
+    what a live install does, not a hand-built key.
     """
     a = _key(tmp_path, agent_name="agent-a", posture=STRICT)
     b = _key(tmp_path, agent_name="agent-b", posture=STRICT)
+    assert a.stable_hash() == b.stable_hash()
+    assert a == b
+
+
+def test_a_declared_difference_still_gives_two_backends(tmp_path) -> None:
+    """Negative control: sharing is about declarations agreeing, not about the
+    agent being ignored. Two agents whose WORK DIR differs still get two
+    backends, so the test above is the pool reading identical declarations and
+    not the key having stopped partitioning at all."""
+    a = _key(tmp_path, agent_name="agent-a", posture=STRICT, work_dir=tmp_path / "wd-a")
+    b = _key(tmp_path, agent_name="agent-b", posture=STRICT, work_dir=tmp_path / "wd-b")
     assert a.stable_hash() != b.stable_hash()
 
 

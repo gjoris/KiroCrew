@@ -49,13 +49,11 @@ def _no_real_metrics_file(monkeypatch: pytest.MonkeyPatch) -> None:
 def _pool_key(server: str = "surface-mcp") -> PoolKey:
     return PoolKey(
         server_name=server,
-        agent_name="kirocrew",
         command_args_hash="cah",
         effective_env_hash="eeh",
         work_dir="/nonexistent-work-dir",
         binary_version="1.0",
         os_uid=1000,
-        config_snapshot_hash="csh",
     )
 
 
