@@ -55,6 +55,7 @@ import type { PullRequestLink } from '../../utils/pullRequestLinks'
 import type { ChatPin } from '../../api/pins'
 
 import { i18nT } from '../../i18n/t'
+import { uiLocation } from '../../uiLocations/uiLocation'
 // Every non-app tab kind maps to a glyph; app-contributed kinds (`app:<…>`) are
 // excluded so this stays an EXHAUSTIVE map a forgotten built-in fails to satisfy
 // — their icon comes from the manifest descriptor via `iconForKind` instead.
@@ -1110,6 +1111,7 @@ export default function SidePanel({
               className="flex items-center justify-center w-7 h-7 shrink-0 self-center rounded-md text-muted hover:text-text hover:bg-bg-hover data-[state=open]:bg-bg-hover data-[state=open]:text-text transition-colors bg-transparent border-none cursor-pointer"
               title={i18nT('pages.chat.sidePanel.open_side_panel_tab')}
               aria-label={i18nT('pages.chat.sidePanel.open_side_panel_tab')}
+              {...uiLocation('chat.side-panel.add')}
             >
               <Plus size={15} />
             </button>
@@ -1122,7 +1124,21 @@ export default function SidePanel({
               // the group, detaching the row mid-click.
               <Fragment key={section.id}>
                 {i > 0 && <DropdownMenuSeparator />}
-                {section.items.map(item => (
+                {/* Browser is its own render site so find_ui can name it (the
+                    `chat.side-panel.browser` location): a marker spread on the
+                    shared row would land on every row, under a label read from
+                    data. Same element, classes and label key as the others. */}
+                {section.items.map(item => item.kind === 'browser' ? (
+                  <DropdownMenuItem
+                    key={item.kind}
+                    className="gap-2.5 py-2"
+                    onSelect={() => openMenuItem(item.kind)}
+                    {...uiLocation('chat.side-panel.browser')}
+                  >
+                    <span className="text-muted shrink-0"><Globe size={15} /></span>
+                    <span className="flex-1">{i18nT('pages.chat.sidePanel.menu_browser')}</span>
+                  </DropdownMenuItem>
+                ) : (
                   <DropdownMenuItem
                     key={item.kind}
                     className="gap-2.5 py-2"

@@ -37,6 +37,7 @@ import {
   DropdownMenuSeparator,
 } from '../../components/ui/dropdown-menu'
 import { i18nT } from '../../i18n/t'
+import { uiLocation } from '../../uiLocations/uiLocation'
 import type { LibraryApp } from './useAppsData'
 
 /** Management verbs the tile can request. */
@@ -199,7 +200,7 @@ export default function LaunchpadTile({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center">
-            <DropdownMenuItem onSelect={onDetail}>
+            <DropdownMenuItem onSelect={onDetail} {...uiLocation('apps.library.tile-details')}>
               <Info size={12} aria-hidden /> {i18nT('pages.libraryPage.tile_details')}
             </DropdownMenuItem>
             {!disabled && pinnable && (

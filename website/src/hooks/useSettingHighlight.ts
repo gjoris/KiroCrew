@@ -3,6 +3,7 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 import { SETTINGS_REGISTRY } from '../components/commandPalette/settingsRegistry.gen'
 import { setSettingsDeepLinkTarget } from '../components/settings'
 import { i18nT } from '../i18n/t'
+import type { SettingEntry } from '../components/commandPalette/settingsTypes'
 
 /**
  * Deep-link target for the "Crewmates" card in Settings → Developer →
@@ -72,7 +73,10 @@ const REGISTRY_IDS = new Set(SETTINGS_REGISTRY.map(e => e.id))
 
 /** Rewrite a legacy highlight id to its current form (identity for current ids). */
 export function resolveLegacyHighlightId(id: string): string {
-  if (LEGACY_ID_EXACT[id]) return LEGACY_ID_EXACT[id]
+  // A current id is never rewritten: a retired label can be reused by a new
+  // row ("Fallback Model" now names the throttle fallback), and that row
+  // must keep its own highlight.
+  if (LEGACY_ID_EXACT[id] && !REGISTRY_IDS.has(id)) return LEGACY_ID_EXACT[id]
   if (id.startsWith('slack.')) id = `channels.${id.slice('slack.'.length)}`
   // Per-channel rows gained a "(<Channel>)" label suffix so their ids are
   // channel-qualified and order-stable. Every pre-suffix `channels.*` id in a
@@ -83,6 +87,35 @@ export function resolveLegacyHighlightId(id: string): string {
     return `${id}-slack`
   }
   return id
+}
+
+/**
+ * The ONE rendered control a registry entry names, or `null`.
+ *
+ * The same attribute contract the highlight probe below uses
+ * (`data-setting-id` > `data-setting-key` > `data-setting-label`), minus both of
+ * its forgiving fallbacks: a duplicate label resolves only at its exact
+ * `occurrence` (never "the first match instead"), and a label match that carries
+ * ANOTHER control's key or id never stands in. A caller that points at the
+ * control it returns (the registered-action guide's arrow) must be able to say
+ * "not here" rather than point at a neighbour.
+ */
+export function resolveSettingElementStrict(entry: SettingEntry): HTMLElement | null {
+  if (entry.settingId) {
+    return document.querySelector<HTMLElement>(`[data-setting-id="${CSS.escape(entry.settingId)}"]`)
+  }
+  if (entry.configKey) {
+    const byKey = document.querySelector<HTMLElement>(`[data-setting-key="${CSS.escape(entry.configKey)}"]`)
+    if (byKey) return byKey
+  }
+  const label = entry.labelKey ? i18nT(entry.labelKey) : entry.label
+  const matches = document.querySelectorAll<HTMLElement>(`[data-setting-label="${CSS.escape(label)}"]`)
+  const candidate = matches[entry.occurrence - 1]
+  if (!candidate) return null
+  const foreignKey = candidate.getAttribute('data-setting-key')
+  if (candidate.hasAttribute('data-setting-id')) return null
+  if (foreignKey !== null && foreignKey !== entry.configKey) return null
+  return candidate
 }
 
 /**

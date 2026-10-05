@@ -116,7 +116,7 @@ describe('WelcomeView', () => {
     ).toBeInTheDocument()
 
     // The hand-off still carries the structured report, not just the localized line.
-    fireEvent.click(within(notice).getByRole('button', { name: i18nT('components.askAgent.ask_the_agent') }))
+    fireEvent.click(within(notice).getByRole('button', { name: i18nT('components.askAgent.ask_the_agent_generic') }))
     expect(sendErrorToChat).toHaveBeenCalledTimes(1)
     const prompt = vi.mocked(sendErrorToChat).mock.calls[0][0]
     expect(prompt).toContain('503')

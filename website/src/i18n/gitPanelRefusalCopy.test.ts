@@ -83,7 +83,7 @@ const DECLARED_BODY = `${GP}.filter_refused`
 const UNREADABLE_BODY = `${GP}.filter_refused_unreadable`
 const ASK_CHANGES = `${GP}.ask_agent_changes`
 const ASK_HISTORY = `${GP}.ask_agent_history`
-const SHARED_ASK = 'components.askAgent.ask_the_agent'
+const SHARED_ASK = 'components.askAgent.ask_the_agent_generic'
 
 const EVERY_KEY = [
   DECLARED_BODY,

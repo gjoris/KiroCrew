@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from 'react'
 import { AlertTriangle, Sparkles, X } from 'lucide-react'
-import AskAgentButton, { handoffErrorToAgent } from './AskAgentButton'
+import AskAgentButton, { askAgentLabel, askAgentTitle, handoffErrorToAgent } from './AskAgentButton'
+import { useCaptainName } from '../lib/captainHandoff'
 import type { ErrorReport } from '../utils/errorReport'
 
 import { i18nT } from '../i18n/t'
@@ -44,11 +45,12 @@ export function ErrorNoticeMenuItem({
    *  and so differs from the journal entry `findReport` looks up. */
   report?: ErrorReport
 }) {
+  const captainName = useCaptainName()
   if (!message) return null
 
   return (
     <Item
-      title={i18nT('components.askAgent.open_a_chat_with_this_error_s_context_attached')}
+      title={askAgentTitle(captainName)}
       aria-describedby={describedBy}
       onSelect={(event) => {
         if (!handoffErrorToAgent({ message, report })) event.preventDefault()
@@ -57,11 +59,11 @@ export function ErrorNoticeMenuItem({
       <Sparkles size={13} className="shrink-0 text-muted" aria-hidden="true" />
       {outcome ? (
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{i18nT('components.askAgent.ask_the_agent')}</span>
+          <span className="truncate">{askAgentLabel(captainName)}</span>
           <span className="truncate text-[11px] text-muted">{outcome}</span>
         </span>
       ) : (
-        i18nT('components.askAgent.ask_the_agent')
+        askAgentLabel(captainName)
       )}
     </Item>
   )

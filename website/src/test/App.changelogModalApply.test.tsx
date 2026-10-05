@@ -176,7 +176,7 @@ describe('changelog modal apply affordance', () => {
     expect(notice).toHaveTextContent(i18nT('pages.settings.aboutPanel.update_failed'))
     expect(notice).not.toHaveTextContent('zzq arm refused')
     expect(within(notice).getByRole('button', {
-      name: i18nT('components.askAgent.ask_the_agent'),
+      name: i18nT('components.askAgent.ask_the_agent_generic'),
     })).toBeInTheDocument()
   })
 
@@ -294,7 +294,7 @@ describe('changelog modal auto-update switch', () => {
 
     expect(await screen.findByText(i18nT('pages.settings.aboutPanel.auto_update_setting_unavailable'))).toBeInTheDocument()
     const dialog = screen.getByRole('dialog', { name: i18nT('app.changelog') })
-    fireEvent.click(within(dialog).getByRole('button', { name: i18nT('components.askAgent.ask_the_agent') }))
+    fireEvent.click(within(dialog).getByRole('button', { name: i18nT('components.askAgent.ask_the_agent_generic') }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: i18nT('app.changelog') })).toBeNull())
   })
 

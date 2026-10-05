@@ -27,7 +27,8 @@ export interface CrewmateIdentity {
 }
 
 /** Avatar + gap: the text column every bubble aligns to. */
-const GUTTER_CLS = 'pl-[38px]'
+export const CREWMATE_GUTTER_CLS = 'pl-[38px]'
+const GUTTER_CLS = CREWMATE_GUTTER_CLS
 
 export default function CrewmateMessage({
   crewmate, pos, ts, children,

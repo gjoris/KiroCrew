@@ -35,6 +35,7 @@ import type React from 'react'
 import ThinkingBlock from './ThinkingBlock'
 import ToolCallLine from './ToolCallLine'
 import NudgeCard, { nudgeMatchesLoop } from './NudgeCard'
+import ConversationCard, { CARD_ROLE } from '../../cards/ConversationCard'
 import RecoveryCard, { injectOpensTurn, resolveInjectCard } from './RecoveryCard'
 import { SystemNoticeRow, isSystemNoticeRow } from './CompactionCard'
 import { ErrorCard, SESSION_START_REPEAT_REFUSAL_AT, isAuthRequired, isCapabilitiesChanged, isModelUnentitled, isSessionStartFailed, isUsageLimit, sessionStartFailureStreak } from './ErrorCard'
@@ -49,7 +50,7 @@ import { isSubagentCompletionMessage, type ParsedSubagentCompletion } from './su
 import { REASONING_ROLES, TURN_OPENER_ROLES, hasReasoningContent } from './groupDisplayItems'
 import { FileCard } from '../../components/FileCard'
 import UserMessage from './UserMessage'
-import CrewmateMessage, { type CrewmateIdentity } from './CrewmateMessage'
+import CrewmateMessage, { CREWMATE_GUTTER_CLS, type CrewmateIdentity } from './CrewmateMessage'
 import { crewmateBubbleClass, crewmateRunPosition } from '../../components/chat/crewmateBubbles'
 import { formatTs, quoteMessageFor, renderAssistantBubble, replyInThreadFor, threadFooterFor, type MessageRenderer, type MessageRenderContext } from '../../app-sdk/messageRenderers'
 import { renderUserContent } from './ChatPageMessageContent'
@@ -388,6 +389,26 @@ export function createTranscriptRenderers(
         }
         return ctx.row(<FileCard file={file} />)
       },
+    },
+    {
+      // Captain's change card or guide offer, at the point it was proposed. The
+      // row holds a reference; the live card is the card / guide store's, so it
+      // updates in place (cards/ConversationCard). The SDK default draws nothing
+      // for this role, which is right for a store-free surface.
+      id: 'conversation_card',
+      roles: [CARD_ROLE],
+      // In a crewmate's chat the card sits in the same column as the bubbles
+      // under the avatar, so it is exactly as wide as a reply.
+      render: (m, ctx) => ctx.row(crewmate
+        ? (
+            <div className={`min-w-0 ${CREWMATE_GUTTER_CLS}`}>
+              {/* Same cap as a crewmate bubble (72ch at the message font size). */}
+              <div className="max-w-[72ch]" style={{ fontSize: 'var(--mc-message-font-size, 14px)' }}>
+                <ConversationCard message={m} slot={o.slot} />
+              </div>
+            </div>
+          )
+        : <ConversationCard message={m} slot={o.slot} />),
     },
     {
       // No default entry: an auto-nudge turn would draw nothing at all.

@@ -5,6 +5,7 @@ import SimpleSelect from '../../components/SimpleSelect'
 import ErrorNotice from '../../components/ErrorNotice'
 
 import { i18nT } from '../../i18n/t'
+import { uiLocation } from '../../uiLocations/uiLocation'
 import { adoptHostUiPrefsOnNextLoad, pauseUiPrefsSync, resumeUiPrefsSync } from '../../lib/uiPrefs'
 
 /**
@@ -342,6 +343,7 @@ export default function PortabilityTab() {
         </p>
         <div className="flex items-center gap-3">
           <button
+            {...uiLocation('backup.export')}
             onClick={handleExport}
             disabled={exportStatus.type === 'loading'}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold font-body cursor-pointer bg-accent text-accent-fg border-none hover:bg-accent-hover transition-colors disabled:opacity-60"
@@ -366,7 +368,7 @@ export default function PortabilityTab() {
           {i18nT('pages.overview.portabilityTab.upload_a_kirocrew_export_zip_to_restore_settings')}
         </p>
         <div className="flex items-center gap-3 flex-wrap">
-          <label htmlFor="portability-import-file" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold font-body cursor-pointer bg-bg-elevated border border-border hover:border-accent transition-colors">
+          <label {...uiLocation('backup.import-file')} htmlFor="portability-import-file" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold font-body cursor-pointer bg-bg-elevated border border-border hover:border-accent transition-colors">
             <Upload size={14} />
             {i18nT('pages.overview.portabilityTab.choose_file')}
             <input

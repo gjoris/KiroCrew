@@ -23,6 +23,8 @@ import { Trans } from 'react-i18next'
 
 import { fmtBytes, fmtCompact } from '../../i18n/format'
 import { i18nT } from '../../i18n/t'
+import { uiLocation } from '../../uiLocations/uiLocation'
+import { useCaptainName } from '../../lib/captainHandoff'
 import { parseErrorCode, findReport, type ErrorReport } from '../../utils/errorReport'
 import { SettingRef } from '../../components/settingRef/SettingRef'
 const EMPTY_FORM: SkillFormData = { name: '', category: '', description: '', triggers: '', tags: '', always: false, body: '' }
@@ -386,7 +388,7 @@ export default function SkillsTab() {
       * null when nothing is pending — this heading moves in and out of
       * `:first-child` with the pending count, so a positional rule would make
       * the gap depend on it. */}
-    <h4 className="text-sm font-semibold text-text-strong mb-2 flex flex-wrap items-center gap-2">{i18nT('pages.overview.skillsTab.skills_count', { count: skills.length })} <InfoTip text={i18nT('pages.overview.skillsTab.skills_tip')} /> <span className="w-full md:w-auto md:ml-auto flex flex-col md:flex-row items-stretch md:items-center [&>button]:justify-center md:[&>button]:justify-start gap-2"><Btn onClick={showBudget} className="text-accent border-accent/30 bg-accent/5 hover:bg-accent/10">{i18nT('pages.overview.skillsTab.budget_doorway_static')}</Btn><Btn onClick={() => setSkillBrowserOpen(true)}><Download size={14} /> {i18nT('pages.overview.skillsTab.add_skill')}</Btn><Btn primary onClick={() => { setFormData(EMPTY_FORM); setCreateError(''); setCreating(true) }}>{i18nT('pages.overview.skillsTab.create_new_skill')}</Btn></span></h4>
+    <h4 className="text-sm font-semibold text-text-strong mb-2 flex flex-wrap items-center gap-2">{i18nT('pages.overview.skillsTab.skills_count', { count: skills.length })} <InfoTip text={i18nT('pages.overview.skillsTab.skills_tip')} /> <span className="w-full md:w-auto md:ml-auto flex flex-col md:flex-row items-stretch md:items-center [&>button]:justify-center md:[&>button]:justify-start gap-2"><Btn onClick={showBudget} className="text-accent border-accent/30 bg-accent/5 hover:bg-accent/10">{i18nT('pages.overview.skillsTab.budget_doorway_static')}</Btn><Btn onClick={() => setSkillBrowserOpen(true)} {...uiLocation('skills.add')}><Download size={14} /> {i18nT('pages.overview.skillsTab.add_skill')}</Btn><Btn primary onClick={() => { setFormData(EMPTY_FORM); setCreateError(''); setCreating(true) }} {...uiLocation('skills.create')}>{i18nT('pages.overview.skillsTab.create_new_skill')}</Btn></span></h4>
     <p className="text-[12px] text-muted mb-2"><Trans i18nKey="pages.overview.skillsTab.auto_create_hint" components={{ settingRef: <SettingRef configKey="skills.auto_create_from_sessions" /> }} /></p>
     <Card>
       <div className="flex items-center gap-2 mb-3">
@@ -395,7 +397,7 @@ export default function SkillsTab() {
           {skillFilter && <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors cursor-pointer" onClick={() => setSkillFilter('')} aria-label={i18nT('pages.overview.skillsTab.clear_search')}>{"\u00d7"}</button>}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Btn onClick={() => refetch()} disabled={isFetching} aria-label={i18nT('pages.overview.skillsTab.refresh_skills')}><RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /></Btn>
+          <Btn onClick={() => refetch()} disabled={isFetching} aria-label={i18nT('pages.overview.skillsTab.refresh_skills')} {...uiLocation('skills.refresh')}><RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /></Btn>
         </div>
       </div>
 
@@ -703,6 +705,7 @@ function PendingCandidateRow({ p, autoOpen, approveRefusal, mixedQueue, onApprov
   onApprove: (slug: string) => void
   onDismiss: (slug: string) => void
 }) {
+  const captainName = useCaptainName()
   const [open, setOpen] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
   // Deliberately an effect and not a `useState(autoOpen)` initializer: the panel
@@ -837,7 +840,9 @@ function PendingCandidateRow({ p, autoOpen, approveRefusal, mixedQueue, onApprov
             message={approveRefusal.message}
             report={approveRefusal.journal}
             askAgent
-            askAgentLabel={i18nT('pages.overview.skillsTab.ask_agent_about_refusal')}
+            askAgentLabel={captainName
+              ? i18nT('pages.overview.skillsTab.ask_agent_about_refusal', { name: captainName })
+              : i18nT('pages.overview.skillsTab.ask_agent_about_refusal_generic')}
             footer={
               Object.keys(approveRefusal.report).length > 0
                 ? <ValidationFindings report={approveRefusal.report} />
@@ -868,7 +873,9 @@ function PendingCandidateRow({ p, autoOpen, approveRefusal, mixedQueue, onApprov
                notices in GitPanel and MobileConnectModal do. */
             report={findReport(detailReadError.message)}
             askAgent
-            askAgentLabel={i18nT('pages.overview.skillsTab.ask_agent_about_failure')}
+            askAgentLabel={captainName
+              ? i18nT('pages.overview.skillsTab.ask_agent_about_failure', { name: captainName })
+              : i18nT('pages.overview.skillsTab.ask_agent_about_failure_generic')}
           />
         </div>
       )}
@@ -913,7 +920,9 @@ function PendingCandidateRow({ p, autoOpen, approveRefusal, mixedQueue, onApprov
                 <div className="mt-1">
                   <AskAgentButton
                     message={`${i18nT('pages.overview.skillsTab.scripts_fail_validation_warning')} (${p.name})`}
-                    label={i18nT('pages.overview.skillsTab.ask_agent_about_findings')}
+                    label={captainName
+                      ? i18nT('pages.overview.skillsTab.ask_agent_about_findings', { name: captainName })
+                      : i18nT('pages.overview.skillsTab.ask_agent_about_findings_generic')}
                     tone="warn"
                   />
                 </div>
@@ -967,6 +976,7 @@ function PendingCandidateRow({ p, autoOpen, approveRefusal, mixedQueue, onApprov
 
 function PendingSkillsPanel() {
   const qc = useQueryClient()
+  const captainName = useCaptainName()
   // Shared ['skills'] cache (same key/fn as the tab's own list): read-only
   // here, resolving a not-found notice's "approved or dismissed" — whether a
   // vanished candidate reappeared below as an approved skill. isFetching gates
@@ -1395,9 +1405,13 @@ function PendingSkillsPanel() {
                surface stays ErrorNotice (the value's origin is a rejected
                mutation); only the label follows the resolved state. */
             askAgentLabel={
-              panelOutcome
-                ? i18nT('pages.overview.skillsTab.ask_agent_about_outcome')
-                : i18nT('pages.overview.skillsTab.ask_agent_about_failure')
+              captainName
+                ? (panelOutcome
+                  ? i18nT('pages.overview.skillsTab.ask_agent_about_outcome', { name: captainName })
+                  : i18nT('pages.overview.skillsTab.ask_agent_about_failure', { name: captainName }))
+                : (panelOutcome
+                  ? i18nT('pages.overview.skillsTab.ask_agent_about_outcome_generic')
+                  : i18nT('pages.overview.skillsTab.ask_agent_about_failure_generic'))
             }
             /* Dismissible: with the queue emptied nothing else ever evicts
                the notice, and a banner that cannot be closed outlives its

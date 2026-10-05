@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../../api/client'
 import ErrorNotice from '../../../components/ErrorNotice'
 import { i18nT } from '../../../i18n/t'
+import { useCaptainName } from '../../../lib/captainHandoff'
 import { pullRequestErrorDetails } from '../../../utils/pullRequestErrors'
 
 const PUBLISH_EVENTS = ['COMMENT', 'REQUEST_CHANGES', 'APPROVE'] as const
@@ -44,6 +45,7 @@ export default function DraftReviewActions(
     { url: string; draftDelivered: boolean; expectedReviewId?: string },
 ) {
   const qc = useQueryClient()
+  const captainName = useCaptainName()
   const [done, setDone] = useState<PublishEvent | null>(null)
   const [confirming, setConfirming] = useState<PublishEvent | null>(null)
 
@@ -281,7 +283,9 @@ export default function DraftReviewActions(
             title={i18nT('apps.codeReviewSage.components.draftReviewActions.publish_failed')}
             message={err}
             askAgent
-            askAgentLabel={i18nT('apps.codeReviewSage.components.draftReviewActions.ask_agent_about_this_failure')}
+            askAgentLabel={captainName
+              ? i18nT('apps.codeReviewSage.components.draftReviewActions.ask_agent_about_this_failure', { name: captainName })
+              : i18nT('apps.codeReviewSage.components.draftReviewActions.ask_agent_about_this_failure_generic')}
           />
         </div>
       )}

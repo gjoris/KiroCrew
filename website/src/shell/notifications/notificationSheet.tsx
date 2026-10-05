@@ -15,6 +15,8 @@ import NotificationFeed from '../../components/notifications/NotificationFeed'
 import NotificationBanner from '../../components/notifications/NotificationBanner'
 import { recordEvent } from '../../rum'
 import { i18nT } from '../../i18n/t'
+import { errorHandoffDestination, useCaptainName } from '../../lib/captainHandoff'
+import { uiLocation } from '../../uiLocations/uiLocation'
 
 /**
  * Desktop width of the notification sheet, in px.
@@ -348,6 +350,7 @@ export function NotificationSheet({ sheet }: { sheet: ReturnType<typeof useNotif
   // the `navigate` alone would leave the user's "keep my draft" answer with
   // the panel shut behind it.
   const leave = useGuardedLeave()
+  const captainName = useCaptainName()
   const {
     isMobile, phase, open, closing, selectedTs, setSelectedTs, selected,
     popoverRef, bellRef, sheetRef, sheetX, leavingProps, closePanel, openPanelOn,
@@ -392,10 +395,12 @@ export function NotificationSheet({ sheet }: { sheet: ReturnType<typeof useNotif
               <AskAgentButton
                 message={error.message || error.name}
                 variant="solid"
-                gate={proceed => leave(proceed, '/chat')}
+                gate={proceed => leave(proceed, errorHandoffDestination())}
                 onHandoff={closePanel}
               />
-              <div className="text-[12px] text-muted">{i18nT('app.notifications_ask_agent_help')}</div>
+              <div className="text-[12px] text-muted">{captainName
+                ? i18nT('app.notifications_ask_agent_help', { name: captainName })
+                : i18nT('app.notifications_ask_agent_help_generic')}</div>
               <button className="text-[12px] text-accent hover:text-accent-hover bg-transparent border-none cursor-pointer" onClick={() => leave(() => { closePanel(); navigate('/notifications') }, '/notifications')}>{i18nT('app.open_the_full_inbox')}</button>
             </div>
           )}
@@ -455,6 +460,7 @@ export function NotificationSheet({ sheet }: { sheet: ReturnType<typeof useNotif
                   <button
                     className="text-[12px] text-accent hover:text-accent-hover bg-transparent border-none cursor-pointer"
                     onClick={() => leave(() => { closePanel(); navigate('/notifications') }, '/notifications')}
+                    {...uiLocation('shell.notifications.open-inbox')}
                   >
                     {i18nT('app.open_inbox')}
                   </button>

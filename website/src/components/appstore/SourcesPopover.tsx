@@ -15,6 +15,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover'
 import RegistryManager from '../RegistryManager'
 
 import { i18nT } from '../../i18n/t'
+import { uiLocation } from '../../uiLocations/uiLocation'
 import { useImeGuard } from '../../hooks/useImeGuard'
 export default function SourcesPopover({ open, onOpenChange, onError, onInstalled }: {
   open: boolean
@@ -52,7 +53,7 @@ export default function SourcesPopover({ open, onOpenChange, onError, onInstalle
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <IconButton aria-label={i18nT('components.appstore.sourcesPopover.manage_app_sources')} title={i18nT('components.appstore.sourcesPopover.manage_app_sources')}>
+        <IconButton aria-label={i18nT('components.appstore.sourcesPopover.manage_app_sources')} title={i18nT('components.appstore.sourcesPopover.manage_app_sources')} {...uiLocation('apps.sources')}>
           <Database size={15} />
         </IconButton>
       </PopoverTrigger>

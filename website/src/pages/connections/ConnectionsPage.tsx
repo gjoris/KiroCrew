@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type R
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { uiLocation } from '../../uiLocations/uiLocation'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1863,6 +1864,8 @@ export default function ConnectionsPage({ servicesEnabled = false }: { servicesE
           </button>
           <button
             id="connections-mcp-tab"
+            data-guide-anchor="mcp.servers-tab"
+            {...uiLocation('connections.mcp-servers-tab')}
             type="button"
             role="tab"
             aria-selected={activeTab === 'mcp-servers'}

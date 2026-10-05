@@ -79,6 +79,9 @@ export interface CrewEditorFacts {
   sharesStorage: boolean
   /** False for the default crew, which cannot be removed. */
   canDelete: boolean
+  /** Captain: the Danger zone row is shown disabled, with the reason it cannot
+   *  be deleted, instead of being left out without a word. */
+  deleteProtected?: boolean
   /** Schedules could not be loaded, so counts are unknown rather than zero. */
   schedulesUnknown?: boolean
   /** Webhook tokens bound to this crew (unbound tokens are not counted: they
@@ -105,7 +108,7 @@ export function useCrewEditorSections(facts: CrewEditorFacts): CrewEditorSection
   const { t } = useTranslation()
   const {
     templateLabel, activeSchedules, totalSchedules, routingWords, sharesStorage, canDelete,
-    schedulesUnknown, webhookTokens, webhookTokensActive, webhooksUnknown, dirtyPanes,
+    deleteProtected, schedulesUnknown, webhookTokens, webhookTokensActive, webhooksUnknown, dirtyPanes,
   } = facts
   return useMemo(() => {
     const rows: CrewEditorSection[] = [
@@ -177,7 +180,7 @@ export function useCrewEditorSections(facts: CrewEditorFacts): CrewEditorSection
     for (const row of rows) {
       if (dirtyPanes.has(row.key)) row.dirty = true
     }
-    if (canDelete) {
+    if (canDelete || deleteProtected) {
       rows.push({
         key: 'danger',
         group: '',
@@ -187,11 +190,12 @@ export function useCrewEditorSections(facts: CrewEditorFacts): CrewEditorSection
         // accessible name is ambiguous to a screen reader and to a test.
         label: t('pages.kiroCrewAgentsPage.danger_zone'),
         foot: true,
+        ...(canDelete ? {} : { disabled: true, reason: t('pages.kiroCrewAgentsPage.captain_cannot_be_deleted') }),
       })
     }
     return rows
     // Primitives, not the `facts` object: a caller building it inline gets a new
     // identity every render, which would make the memo never hit.
   }, [templateLabel, activeSchedules, totalSchedules, routingWords, sharesStorage, canDelete,
-    schedulesUnknown, webhookTokens, webhookTokensActive, webhooksUnknown, dirtyPanes, t])
+    deleteProtected, schedulesUnknown, webhookTokens, webhookTokensActive, webhooksUnknown, dirtyPanes, t])
 }

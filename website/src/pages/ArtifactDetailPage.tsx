@@ -52,6 +52,7 @@ import { PublishHub, publishNoticeKey } from '../components/PublishHub'
 import type { Artifact, ArtifactEvent, ArtifactComment, CommentAnchor, ChatSlot } from '../types'
 
 import { i18nT } from '../i18n/t'
+import { uiLocation } from '../uiLocations/uiLocation'
 import { errMessage } from '../utils/thunkError'
 import { byRecentActivity } from '../utils/slotRecency'
 import { fmtDateFields } from '../i18n/format'
@@ -1884,6 +1885,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
               // Named so it is distinguishable from the document-type control
               // beside it -- both for assistive tech and for tests.
               aria-label={i18nT('pages.artifactDetailPage.version')}
+              {...uiLocation('artifacts.detail.versions')}
               disabled={saving}
               options={versionOptions}
               optionLabels={versionOptionLabels}
@@ -2025,6 +2027,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
               title={panel === 'comments' ? i18nT('pages.artifactDetailPage.hide_comments') : i18nT('pages.artifactDetailPage.show_comments')}
               aria-label={i18nT('pages.artifactDetailPage.toggle_comments')}
               aria-pressed={panel === 'comments'}
+              {...uiLocation('artifacts.detail.comments')}
             >
               <span className="inline-flex items-center gap-1">
                 <MessageSquare size={13} />

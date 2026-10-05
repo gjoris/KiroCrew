@@ -2,6 +2,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { NativeSelect, NativeSelectOption } from './ui/native-select'
 import { useIsTouchDevice } from '../hooks/useIsTouchDevice'
 import { SourceBadge } from './ui'
+import { UI_LOCATION_ATTR } from '../uiLocations/uiLocation'
 
 /**
  * Thin Radix Select wrapper with the retired StyledSelect's props shape.
@@ -93,10 +94,17 @@ export interface SimpleSelectProps {
   'aria-describedby'?: string
   /** Full trigger text for controls whose visible label may be ellipsized. */
   title?: string
+  /** A find_ui marker (`{...uiLocation(id)}` at the call site), forwarded to
+   *  the control a person clicks: the Radix trigger, or the native `<select>`
+   *  on touch. Nothing else is forwarded. */
+  'data-ui-location'?: string
 }
 
-export default function SimpleSelect({ options, optionLabels, optionIcons, value, onChange, action, clearLabel, triggerFallback, labelsInListOnly, optionBadges, disabled, style, id, className, contentClassName, 'aria-label': ariaLabel, 'aria-describedby': ariaDescribedBy, title }: SimpleSelectProps) {
+export default function SimpleSelect({ options, optionLabels, optionIcons, value, onChange, action, clearLabel, triggerFallback, labelsInListOnly, optionBadges, disabled, style, id, className, contentClassName, 'aria-label': ariaLabel, 'aria-describedby': ariaDescribedBy, title, 'data-ui-location': uiLocationId }: SimpleSelectProps) {
   const isTouch = useIsTouchDevice()
+  // Spread, not a `data-ui-location={...}` attribute: the find_ui generator
+  // reads every such attribute as a render site and needs a literal id there.
+  const marker = uiLocationId ? { [UI_LOCATION_ATTR]: uiLocationId } : {}
   const toRadix = (v: string) => (v === '' ? EMPTY_VALUE_SENTINEL : v)
   const fromRadix = (v: string) => (v === EMPTY_VALUE_SENTINEL ? '' : v)
   // '' is selectable only when the options include it or a clearLabel row exists;
@@ -125,6 +133,7 @@ export default function SimpleSelect({ options, optionLabels, optionIcons, value
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
         title={title}
+        {...marker}
         disabled={disabled}
         // `style` lands on the WRAPPER on both paths. It is layout intent (a flex
         // basis, a min-width), and on this path the `<select>` is `w-full` inside
@@ -172,7 +181,7 @@ export default function SimpleSelect({ options, optionLabels, optionIcons, value
         }}
         disabled={disabled}
       >
-        <SelectTrigger id={id} aria-label={ariaLabel} aria-describedby={ariaDescribedBy} title={title} className={className}>
+        <SelectTrigger id={id} aria-label={ariaLabel} aria-describedby={ariaDescribedBy} title={title} {...marker} className={className}>
           <SelectValue placeholder={triggerFallback ?? clearLabel ?? (value || '—')}>
             {/* Children override the selected item's text. Passed only when there
                 IS a selectable non-empty value, so an unset control still falls

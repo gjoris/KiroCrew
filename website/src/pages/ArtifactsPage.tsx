@@ -45,6 +45,7 @@ import { WidgetThumb, ContentThumb, ImageThumb, WebAppThumb } from '../component
 import { useColumnCount } from '../hooks/useColumnCount'
 
 import { i18nT } from '../i18n/t'
+import { uiLocation } from '../uiLocations/uiLocation'
 
 const KIND_OPTIONS = ['', 'widget', 'html', 'markdown', 'svg', 'json', 'text', 'webapp', 'image'] as const
 
@@ -1641,6 +1642,7 @@ export default function ArtifactsPage() {  const navigate = useNavigate()
         type="button"
         onClick={() => { setPinnedOnly(true); safeSetItem('mc-artifacts-pinned-only', '1') }}
         aria-pressed={pinnedOnly}
+        {...uiLocation('artifacts.starred')}
         className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors cursor-pointer border-none inline-flex items-center gap-1 ${pinnedOnly ? 'bg-accent text-accent-fg' : 'bg-transparent text-muted hover:text-text'}`}
       >
         <Star size={12} className={pinnedOnly ? 'fill-current' : ''} /> {i18nT('pages.artifactsPage.starred')}
@@ -1775,6 +1777,7 @@ export default function ArtifactsPage() {  const navigate = useNavigate()
                 disabled={newArtifactMut.isPending}
                 className="flex items-center gap-1.5 rounded-r-none"
                 title={i18nT('pages.artifactsPage.start_a_new_blank_document_in_the_library')}
+                {...uiLocation('artifacts.new')}
               >
                 {newArtifactMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <FilePlus size={13} />} {i18nT('pages.artifactsPage.new_artifact')}
               </Btn>
@@ -1797,12 +1800,13 @@ export default function ArtifactsPage() {  const navigate = useNavigate()
                     // pinning a literal height that the label's font would
                     // outgrow.
                     className="rounded-l-none border-l-0 px-1 self-stretch"
+                    {...uiLocation('artifacts.add-menu')}
                   >
                     {addArtifactMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
                   </Btn>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={handleAddArtifact}>
+                  <DropdownMenuItem onSelect={handleAddArtifact} {...uiLocation('artifacts.import')}>
                     <FileText size={13} className="text-muted shrink-0" /> {i18nT('pages.artifactsPage.import_from_a_file')}
                   </DropdownMenuItem>
                   {/* On a phone this menu is also where the folder action lives:
@@ -1844,7 +1848,7 @@ export default function ArtifactsPage() {  const navigate = useNavigate()
               onChange={handleAddArtifactFile}
             />
             {!isMobile && (
-              <Btn onClick={handleNewFolder} className="flex items-center gap-1.5" title={i18nT('pages.artifactsPage.create_a_folder_to_organize_your_artifacts')}>
+              <Btn onClick={handleNewFolder} className="flex items-center gap-1.5" title={i18nT('pages.artifactsPage.create_a_folder_to_organize_your_artifacts')} {...uiLocation('artifacts.new-folder')}>
                 <FolderPlus size={13} /> {i18nT('pages.artifactsPage.new_folder')}
               </Btn>
             )}
@@ -1903,7 +1907,7 @@ export default function ArtifactsPage() {  const navigate = useNavigate()
               </div>
             </div>
             {cloudDeployEnabled && !isMobile && deployPreview && (
-              <Btn onClick={() => navigate('/deploy')} className="flex items-center gap-1.5 ml-auto" title={i18nT('pages.artifactsPage.artifact_deploy_aws_profiles_and_published_sites')}>
+              <Btn onClick={() => navigate('/deploy')} className="flex items-center gap-1.5 ml-auto" title={i18nT('pages.artifactsPage.artifact_deploy_aws_profiles_and_published_sites')} {...uiLocation('artifacts.deploy')}>
                 <Globe size={13} /> {i18nT('pages.artifactsPage.artifact_deploy')}
               </Btn>
             )}

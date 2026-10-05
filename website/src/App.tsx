@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, createContext, lazy, Suspense, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAppSelector, useAppDispatch } from './store'
 import { fetchSlots, sseStatus, setUpdateProgress, setEnabledAppIds } from './store/dashboardSlice'
 // Side-effect: registers every built-in surface in the registry, ahead of every
@@ -12,6 +12,8 @@ import { setAgentSwitchNotice, switchSlot, selectActiveSlotProject } from './sto
 import { setNavIntentHandler as setArtifactNavIntentHandler } from './utils/artifactPopout'
 import { applyNavIntentInMain, chatDeepLinkSlot } from './utils/navIntent'
 import { installSoftNavigate } from './utils/errorReport'
+import { publishCaptainFromAgents } from './lib/captainHandoff'
+import { GuideProvider } from './guide/GuideContext'
 import { metricColor } from './utils/metricColor'
 import { fetchNotifications, armBootNotificationsFallback } from './store/notificationsSlice'
 import { useWebSocket } from './hooks/useWebSocket'
@@ -81,6 +83,8 @@ import LogsPage from './pages/LogsPage'
 // chunk sits at its size budget — the import() boundary keeps the page (and
 // its drawer/roster tree) out of the initial bundle.
 const MembersPage = lazy(() => import('./pages/members/MembersPage'))
+// The guide pill renders only once a guide is offered; keep it off the entry chunk.
+const GuideLayer = lazy(() => import('./guide/GuideLayer'))
 // Lazy for the same reason: the crew work-item board is opened from a conductor
 // session or the Crew page, never at startup.
 const CrewBoardPage = lazy(() => import('./pages/CrewBoardPage'))
@@ -130,6 +134,8 @@ import { NavHistoryArrows } from './components/NavHistoryArrows'
 
 import { useStartupVideo, StartupVideo } from './shell/boot/startupVideo'
 import { i18nT } from './i18n/t'
+import { UI_LOCATION_ATTR, uiLocation } from './uiLocations/uiLocation'
+import type { UiLocationId } from './uiLocations/descriptors'
 import { appNavTarget } from './appNav'
 import { isAppNavId } from './appNotificationBadges'
 import type { AppRunState } from './appRunState'
@@ -569,7 +575,7 @@ export function NavBadge({ navId, collapsed, appBadges, runState }: { navId: str
  *  right-edge geometry in a real browser — the one check that can see the
  *  badge-over-chord overlap this row's unit tests can only pin structurally
  *  (happy-dom computes no layout). Same seam `UpdateOverlay` is exported on. */
-export function NavItem({ path, label, icon, active, collapsed, badge, onClickOverride, onClick, navId, pressed, touch, replace, caption }: {
+export function NavItem({ path, label, icon, active, collapsed, badge, onClickOverride, onClick, navId, pressed, touch, replace, caption, 'data-ui-location': uiLocationId }: {
   path: string; label: string; icon: React.ReactNode; active: boolean; collapsed: boolean; badge?: React.ReactNode; onClickOverride?: () => void; onClick?: () => void; navId?: string
   /** Set on rows that TOGGLE a surface rather than navigate (e.g. the docked
    *  terminal). `active` only paints the row; without aria-pressed a screen
@@ -588,6 +594,10 @@ export function NavItem({ path, label, icon, active, collapsed, badge, onClickOv
    *  (e.g. "Agent Capabilities" -> "Capabilities"). The accessible name stays
    *  the full label. */
   caption?: string
+  /** A registered find_ui location (`{...uiLocation(id)}` spread on the row),
+   *  forwarded to the row element a person taps. Typed to the registered ids,
+   *  so the row takes no arbitrary attribute. */
+  'data-ui-location'?: UiLocationId
 }) {
   const navigate = useNavigate()
   // On mobile this row lives inside the nav DRAWER, whose slide runs on the
@@ -624,6 +634,8 @@ export function NavItem({ path, label, icon, active, collapsed, badge, onClickOv
     <motion.div layout={isMobileRow ? undefined : 'position'}
       ref={rowRef}
       data-onboarding-nav={navId}
+      // Forwarded, not a render site of its own: the site is the spread on <NavItem>.
+      {...(uiLocationId ? { [UI_LOCATION_ATTR]: uiLocationId } : {})}
       // role+tabIndex+key handler make this a real keyboard-operable control
       // (Enter/Space activate, preventing Space page-scroll). aria-label names
       // it when collapsed (icon-only, no text).
@@ -779,6 +791,7 @@ function NotificationsBellButton() {
         // stays a rail affordance, where it can be marked opaque.
         title={unacked.length > 0 ? i18nT('app.notification_count', { count: unacked.length }) : i18nT('app.notifications')}
         aria-label={i18nT('app.notifications')}
+        {...uiLocation('shell.notifications')}
         aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -910,6 +923,17 @@ export default function App() {
     installSoftNavigate(navigate, mayLeaveForErrorHandoff)
     return () => installSoftNavigate(null)
   }, [isPopout, isEmbed, navigate, mayLeaveForErrorHandoff])
+
+  // Publish Captain (the built-in Assistant crewmate) for the same hook-free
+  // hand-off: error surfaces say "Ask <Captain>" and land on Captain's thread.
+  // Same key as every other crew-registry read, so the WS `refresh` frame and a
+  // crew save (rename, delete) reach it without this knowing who wrote.
+  const { data: crewRegistry } = useQuery<{ agents?: Array<{ name?: string; kiro_agent?: unknown; display_name?: string }> }>({
+    queryKey: ['kirocrew-agents'],
+    queryFn: () => api.kirocrewAgents(),
+    enabled: !isPopout && !isEmbed,
+  })
+  useEffect(() => { publishCaptainFromAgents(crewRegistry?.agents) }, [crewRegistry])
 
   const {
     colorTheme,
@@ -1823,7 +1847,7 @@ export default function App() {
               matching where every browser puts it. */}
           {!isMobile && <NavHistoryArrows />}
           {isMobile && (
-            <button className="group p-2 rounded-md bg-transparent border-none cursor-pointer text-muted hover:text-text shrink-0" onClick={toggleNav} aria-label={i18nT('app.open_menu')}>
+            <button className="group p-2 rounded-md bg-transparent border-none cursor-pointer text-muted hover:text-text shrink-0" onClick={toggleNav} aria-label={i18nT('app.open_menu')} {...uiLocation('shell.mobile-menu')}>
               {/* The product logo, not a generic menu glyph. A narrow layout has exactly
                   one nav affordance, and it opens the same rail whose header carries this
                   same `avatar` on a wide one -- so it is the same asset, the same
@@ -1899,6 +1923,7 @@ export default function App() {
             variant="chip"
             radius={TOPBAR_PILL_RADIUS}
             onClick={commandPalette.openPalette}
+            {...uiLocation('shell.search')}
             className="glass-shadow glass-hover h-7 flex-1 min-w-0 px-3 text-muted hover:text-text transition-colors flex items-center justify-center gap-2 cursor-pointer"
             /* The trigger has to describe the surface it actually opens. While an app
                owns the quick-search slot the gesture opens a launcher -- typing runs
@@ -1937,6 +1962,7 @@ export default function App() {
             className={`flex items-center justify-center w-7 h-7 rounded-md hover:bg-bg-hover transition-colors bg-transparent border-none cursor-pointer shrink-0 ${focusMode ? 'text-accent' : 'text-muted hover:text-text'}`}
             aria-label={i18nT('app.focus_mode')}
             aria-pressed={focusMode}
+            {...uiLocation('shell.focus-mode')}
             title={i18nT(IS_MAC ? 'app.focus_mode_title_mac' : 'app.focus_mode_title')}
           >
             <Fullscreen size={15} />
@@ -2475,6 +2501,7 @@ export default function App() {
                   collapsed={effectiveCollapsed}
                   onClick={closeMobileNav}
                   badge={!devPageSeen && activePath !== devPath ? <span className={`${dotClass} [animation-iteration-count:3]!`} /> : undefined}
+                  {...uiLocation('shell.developer')}
                 />
                 )
               })()}
@@ -2495,6 +2522,7 @@ export default function App() {
                      focus is a harmless no-op). Explicit re-dock lives in the
                      TerminalDetachedBar below -- never a timing heuristic. */
                   onClickOverride={() => { if (terminalPoppedOut) focusTerminalPopout(); else toggleBottomTerminal(activeSlotProject) }}
+                  {...uiLocation('shell.terminal')}
                 />
               )}
               {hasRenderableMobileConnect && (
@@ -2509,6 +2537,7 @@ export default function App() {
                   collapsed={effectiveCollapsed}
                   onClick={closeMobileNav}
                   onClickOverride={() => setMobileConnectOpen(true)}
+                  {...uiLocation('shell.connect-phone')}
                 />
               )}
               {/* Phone only: Search as a nav row. The bar's search square left
@@ -2526,6 +2555,7 @@ export default function App() {
                   onClick={closeMobileNav}
                   onClickOverride={commandPalette.openPalette}
                   navId="search"
+                  {...uiLocation('shell.menu-search')}
                 />
               )}
               <div>{renderNavRow(cap)}</div>
@@ -2545,6 +2575,7 @@ export default function App() {
                   onClick={closeMobileNav}
                   onClickOverride={() => setKiroUsageOpen(true)}
                   navId="account"
+                  {...uiLocation('shell.kiro-account')}
                 />
               )}
               <NavItem
@@ -2659,6 +2690,11 @@ export default function App() {
           {/* The rail renderer reaches the chat page through context rather than
               a prop: the route element is shared with the popout/embed frames. */}
           <MobileNavRailContext.Provider value={mobileNavRail}>
+          {/* Registered-action guide: offered in the chat it came from, driven
+              only after the human presses Start; the pages it walks through
+              read their draft and request-header seams from this provider. */}
+          <GuideProvider>
+          <Suspense fallback={null}><GuideLayer /></Suspense>
           <Routes>
             <Route path="/chat/:slug?" element={<ErrorBoundary><ChatPage /></ErrorBoundary>} />
             <Route path="/orchestrated/:slug?" element={<OrchestratedRedirect />} />
@@ -2720,6 +2756,7 @@ export default function App() {
             <Route path="/:builtinApp/*" element={<BuiltinAppRoute />} />
             <Route path="*" element={<ChatRedirect />} />
           </Routes>
+          </GuideProvider>
           </MobileNavRailContext.Provider>
         </main>
         {/* App-wide docked terminal panel — renders beside <main> (right) or

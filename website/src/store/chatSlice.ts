@@ -278,6 +278,13 @@ function applyNonActiveFrame(
   // Stop settlement captured a moment earlier read as stale and leave the pane
   // falsely busy (GPT round 10).
   if (role === 'inject' && !isNoteRow({ cls, meta })) bumpRunEpoch(state, slot)
+  // A change card / guide offer: placed like the tool row that proposed it.
+  if (role === 'card') {
+    let insertIdx = msgs.length
+    if (insertIdx > 0 && msgs[insertIdx - 1]?.role === 'streaming') insertIdx--
+    msgs.splice(insertIdx, 0, ensureMsgId({ role, content, cls: cls || '', ts, meta }))
+    return
+  }
   if (role === 'tool') {
     if (run.state === 'idle') bumpRunEpoch(state, slot)
     setRunState(run, 'tool_running')
@@ -479,6 +486,16 @@ function applyActiveFrame(state: ChatState, p: ChatFrame): void {
   // An inject row starts a turn like a user message does (see runEpoch);
   // a passive `/note` does not (GPT round 10).
   if (role === 'inject' && !isNoteRow({ cls, meta })) bumpRunEpoch(state, slot)
+  // A change card / guide offer lands mid-turn, right after the tool call that
+  // proposed it, so it is placed exactly like that tool row: ahead of the open
+  // streaming message (the gateway's own order, which the turn-end refresh
+  // restores anyway).
+  if (role === 'card') {
+    let insertIdx = state.messages.length
+    if (insertIdx > 0 && state.messages[insertIdx - 1]?.role === 'streaming') insertIdx--
+    state.messages.splice(insertIdx, 0, ensureMsgId({ role, content, cls: cls || '', ts, meta }))
+    return
+  }
   // Tool call — update state, insert before streaming message
   if (role === 'tool') {
     if (state.slotState === 'idle') bumpRunEpoch(state, slot)

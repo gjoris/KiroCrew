@@ -303,7 +303,8 @@
     "connect_your_phone": "Connect your phone",
     "kiro_credit_usage_no_reading": "Kiro credit usage — no balance reading yet; open to refresh",
     "kiro_credit_usage_config_unreadable": "Kiro credit usage — could not read the backend setting; open to retry",
-    "notifications_ask_agent_help": "Leaves this page and opens a new chat with this error's report already filled in, ready for you to send",
+    "notifications_ask_agent_help": "Leaves this page and opens your chat with {{name}}, with this error's report already filled in and ready for you to send",
+    "notifications_ask_agent_help_generic": "Leaves this page and opens a new chat with this error's report already filled in, ready for you to send",
     "metrics_card_old_data": "Last updated more than 90 seconds ago",
     "metrics_card_fetch_failed": "The last metrics update failed"
   },
@@ -1555,6 +1556,14 @@
       "workspace": {
         "co_author_conflict_discard_button": "Discard changes",
         "co_author_conflict_discard_title": "Discard unsaved changes?"
+      }
+    },
+    "codeReviewSage": {
+      "components": {
+        "draftReviewActions": {
+          "ask_agent_about_this_failure": "Ask {{name}} about this failure",
+          "ask_agent_about_this_failure_generic": "Ask the agent about this failure"
+        }
       }
     }
   },
@@ -3391,8 +3400,10 @@
       "unnamed_input": "Unnamed input"
     },
     "askAgent": {
-      "ask_the_agent": "Ask the agent",
-      "open_a_chat_with_this_error_s_context_attached": "Open a chat with this error's full context attached",
+      "ask_the_agent": "Ask {{name}}",
+      "ask_the_agent_generic": "Ask the agent",
+      "open_a_chat_with_this_error_s_context_attached": "Open a chat with {{name}} that already has this error's full context",
+      "open_a_chat_with_this_error_s_context_attached_generic": "Open a chat with this error's full context attached",
       "prompt_lead": "This error just came up in the {{productName}} dashboard. Diagnose the root cause and fix it."
     },
     "errorBoundary": {
@@ -3749,6 +3760,9 @@
       "sr_confirm": "Send held: the prompt is over its length limit. Send again to send it anyway."
     },
     "meetCrewmatesFlow": {
+      "back_to_chat": "Back to chat",
+      "draft_kept": "Your crewmate draft was kept. The new suggestion hasn't replaced it.",
+      "leave_draft": "Leave this page? Your unsaved crewmate draft will be lost.",
       "aria_label": "Meet CrewMates",
       "panel_headline": "Own a goal. Follow it through.",
       "panel_body": "A crewmate manages its work across chat sessions, builds dashboards to track progress, and keeps notes along the way.",
@@ -3823,6 +3837,159 @@
     },
     "runInTerminalBtn": {
       "copied_paste_into_terminal": "Copied — paste it into the terminal"
+    },
+    "assistantWelcome": {
+      "default_name": "Captain"
+    },
+    "guideLayer": {
+      "region_label": "Guide",
+      "close": "Close",
+      "title_generic": "Guide from your assistant",
+      "title_settings_show": "Show the setting “{{label}}”",
+      "title_crewmate_create": "Create a crewmate",
+      "title_mcp_open_add": "Open the page for adding an MCP server",
+      "start": "Start",
+      "show_again": "Show again",
+      "dismiss": "Dismiss",
+      "cancel_guide": "Cancel guide",
+      "next": "Next",
+      "continue": "Continue",
+      "continue_hint": "Press Continue to go to the next part of this guide.",
+      "take_over": "Take over",
+      "other_tab": "This guide is open in another tab, or was before this page reloaded. Take over to continue it here; any other tab stops.",
+      "looking_for_control": "Looking for the control…",
+      "target_missing": "The control this step points to isn’t on screen, so the guide stopped here.",
+      "go_back_to_step": "Go back to this step",
+      "left_step": "You left the page this step is on. Go back to pick up where you left off.",
+      "waiting_for_confirmation": "Submitted. The guide finishes once {{productName}} confirms the save.",
+      "cancel_does_not_undo": "Cancelling stops the guide. It doesn’t undo a save you already submitted.",
+      "step_settings_show": "Change the highlighted setting right here. The guide doesn’t change it for you.",
+      "step_crewmate_goal": "Check the goal, then press Next in the form.",
+      "step_crewmate_name": "Check the name, then press Next in the form.",
+      "step_crewmate_create": "Review everything, then press Create when you’re ready. Nothing is created until you do.",
+      "step_mcp_open_tab": "Open the MCP Servers tab.",
+      "step_mcp_add_custom": "Press Add Custom to open the add form. The guide ends there; nothing is added until you save the form yourself.",
+      "refused_unknown_action": "Your assistant proposed a step this version of {{productName}} can’t guide.",
+      "refused_invalid_params": "This guide is missing details it needs, so it can’t start.",
+      "refused_unknown_setting": "This guide points to a setting that doesn’t exist here.",
+      "refused_sensitive_setting": "This guide points to a security or credential setting. Open it yourself from Settings.",
+      "finished_completed": "Guide complete",
+      "finished_cancelled": "Guide cancelled",
+      "finished_expired": "Guide expired",
+      "finished_saved_without_guide": "Your change was saved; the guide ended without confirming it",
+      "in_progress": "Guide in progress",
+      "back_to_name": "Back to {{name}}"
+    },
+    "changeCards": {
+      "added": "Added",
+      "apply_fallback": "Apply",
+      "becomes": "becomes",
+      "cancel": "Cancel",
+      "continue_apply": "Continue",
+      "details": "Details",
+      "dismiss": "Dismiss",
+      "empty_value": "(empty)",
+      "expired": "This proposal expired. Ask Captain to propose it again.",
+      "expires": "Expires {{when}}",
+      "hidden_models_hide": "Hide “{{item}}” from the model picker",
+      "hidden_models_label": "Hidden models",
+      "hidden_models_show": "Show “{{item}}” in the model picker",
+      "field_at": "Run time",
+      "field_cron_expr": "Schedule",
+      "field_enabled": "Enabled",
+      "field_goal": "Goal",
+      "field_message": "Message",
+      "field_name": "Name",
+      "field_timezone": "Time zone",
+      "field_value": "New value",
+      "kind_connection_connect": "Connection",
+      "kind_crewmate_capabilities": "Crewmate tools",
+      "kind_crewmate_create": "New crewmate",
+      "kind_crewmate_update": "Crewmate change",
+      "kind_denied_command": "Denied command rule",
+      "kind_mcp_add_custom": "Custom MCP server",
+      "kind_mcp_install": "MCP server",
+      "kind_mcp_toggle": "MCP switch",
+      "kind_schedule_create": "New schedule",
+      "kind_schedule_update": "Schedule change",
+      "kind_secret_save": "Secret",
+      "kind_setting_change": "Setting",
+      "kind_template_update": "Agent template",
+      "kind_trust_app": "Trusted app",
+      "list_title_add": "Add “{{item}}” to {{label}}",
+      "list_title_remove": "Remove “{{item}}” from {{label}}",
+      "manage": "Manage",
+      "open_signin": "Open the sign-in page",
+      "primary_connection_connect": "Connect",
+      "primary_crewmate_capabilities": "Save tools",
+      "primary_crewmate_create": "Create crewmate",
+      "primary_crewmate_update": "Save crewmate",
+      "primary_denied_command": "Save rule",
+      "primary_mcp_add_custom": "Add server",
+      "primary_mcp_install": "Install server",
+      "primary_mcp_toggle": "Apply switch",
+      "primary_schedule_create": "Create schedule",
+      "primary_schedule_update": "Save schedule",
+      "primary_secret_save": "Save secret",
+      "primary_setting_change": "Apply change",
+      "primary_template_update": "Save template",
+      "primary_trust_app": "Trust app",
+      "reason_label": "Captain's reason",
+      "refresh_preview": "Refresh preview",
+      "refusal_card_busy": "This card is already being applied.",
+      "refusal_changed_since_apply": "This changed after it was applied, so undo was refused. To change it now, use its own page.",
+      "refusal_changed_since_preview": "This changed after the card was shown. Refresh the preview and check it again.",
+      "refusal_owner_only": "Only the dashboard owner can confirm this change.",
+      "refusal_plan_mismatch": "This request didn't match the card, so nothing changed.",
+      "refusal_stale_revision": "The card changed in the meantime. Refresh it and try again.",
+      "refusal_step_out_of_order": "The steps arrived out of order. Refresh the card and try again.",
+      "refusal_undo_unavailable": "This change can't be undone.",
+      "removed": "Removed",
+      "result_applied": "Applied: {{title}}",
+      "result_cancelled": "Cancelled: {{title}}",
+      "result_expired": "Expired: {{title}}",
+      "result_failed": "Not applied: {{title}}",
+      "result_partial": "Partly done: {{title}}",
+      "result_undone": "Restored: {{title}}",
+      "retry": "Try again",
+      "risk_code_exec": "This runs third-party code on this machine.",
+      "risk_widen": "This lets agents do more without asking you.",
+      "risk_widen_ack": "I understand this widens permissions",
+      "schedule_next_run": "Next run",
+      "schedule_once": "Runs once",
+      "schedule_once_when": "{{day}}, {{date}} · {{time}}",
+      "schedule_timezone": "Time zone",
+      "scope_count_one": "Affects {{count}} member",
+      "scope_count_other": "Affects {{count}} members",
+      "scope_label": "Affects",
+      "scope_only_this": "Only this crewmate changes.",
+      "secret_hint": "Goes straight to your secrets. Captain never sees it.",
+      "secret_label": "Value",
+      "status_applying": "Applying…",
+      "status_applying_step": "Applying step {{done}} of {{total}}…",
+      "status_previewing": "Updating the preview…",
+      "status_undoing": "Undoing…",
+      "status_waiting_signin": "Waiting for you to finish signing in…",
+      "undo": "Undo",
+      "undo_delete_secret": "Delete secret",
+      "undo_disconnect": "Disconnect",
+      "undo_unavailable": "Undo isn't available for this change.",
+      "undo_unavailable_overwrites": "Undo isn't available: this replaced a secret that already existed.",
+      "cron_every_day": "Every day",
+      "cron_every_minute": "Every minute",
+      "cron_every_hour": "Every hour",
+      "cron_every_interval": "Every {{interval}}",
+      "cron_weekly_on": "Weekly on {{days}}",
+      "cron_monthly_on": "Monthly on day {{day}}",
+      "cron_yearly_on": "Every year on {{date}}",
+      "cron_every_day_in": "Every day in {{month}}",
+      "result_reminder_set": "Reminder set: {{name}} · runs once, {{when}}",
+      "result_schedule_created": "Schedule created: {{name}} · {{schedule}}",
+      "result_setting_changed": "Setting changed: {{label}}",
+      "result_crewmate_created": "Crewmate created: {{name}}",
+      "primary_schedule_once": "Set reminder",
+      "due": "Due {{when}}",
+      "time_passed": "This time has already passed. Ask Captain for a new time."
     }
   },
   "hooks": {
@@ -5602,7 +5769,8 @@
       "built_from": "Built from",
       "change_default_crewmate": "Change default crewmate",
       "change_default_hint": "Opens the Default crewmate setting on Developer → Config.",
-      "keep_crew": "Keep crewmate"
+      "keep_crew": "Keep crewmate",
+      "captain_cannot_be_deleted": "Captain is the built-in assistant and can't be deleted."
     },
     "knowledge": {
       "detailView": {
@@ -6074,10 +6242,14 @@
         "approve_failed_script_validation": "Approval refused: the bundled scripts failed validation — approving again without changes returns this same refusal. Fix the scripts, then approve.",
         "approve_flagged_hint": "Fix the scripts, then approve — approval will be refused until then.",
         "approve_review_first": "Review the candidate to enable Approve.",
-        "ask_agent_about_failure": "Ask the agent about this failure",
-        "ask_agent_about_outcome": "Ask the agent what happened to this candidate",
-        "ask_agent_about_findings": "Ask the agent about these findings",
-        "ask_agent_about_refusal": "Ask the agent about this refusal",
+        "ask_agent_about_failure": "Ask {{name}} about this failure",
+        "ask_agent_about_failure_generic": "Ask the agent about this failure",
+        "ask_agent_about_outcome": "Ask {{name}} what happened to this candidate",
+        "ask_agent_about_outcome_generic": "Ask the agent what happened to this candidate",
+        "ask_agent_about_findings": "Ask {{name}} about these findings",
+        "ask_agent_about_findings_generic": "Ask the agent about these findings",
+        "ask_agent_about_refusal": "Ask {{name}} about this refusal",
+        "ask_agent_about_refusal_generic": "Ask the agent about this refusal",
         "auto_generated_skill_candidates_awaiting_your_ap": "Auto-generated skill candidates awaiting your approval. Click Review to inspect the SKILL.md and any bundled script before approving. Approve makes the skill live (and marks scripts executable); dismiss discards it. Nothing goes live until you approve it.",
         "budget_back": "Skills",
         "budget_chars": "chars",
@@ -7290,7 +7462,8 @@
         "credential_redaction_owner_only": "Only the dashboard owner can read or change this setting. The 'Open a chat with the agent' link shares only this error message.",
         "credential_redaction_still_on": "Redaction is still on.",
         "credential_redaction_still_off": "Redaction is still off.",
-        "credential_redaction_ask_agent": "Open a chat with the agent about this error"
+        "credential_redaction_ask_agent": "Open a chat with {{name}} about this error",
+        "credential_redaction_ask_agent_generic": "Open a chat with the agent about this error"
       },
       "skillsPanel": {
         "failed_to_save_skills_setting": "Failed to save skills setting",
@@ -7907,7 +8080,8 @@
       "failed_to_load_app": "Failed to load app"
     },
     "membersPage": {
-      "drawer_delegated_working": "Delegated work running"
+      "drawer_delegated_working": "Delegated work running",
+      "back_to_roster": "Back to crewmates"
     }
   },
   "privacyDisclosure": {
@@ -8257,6 +8431,10 @@
       "package": "Package",
       "custom": "Custom",
       "private_copy": "Crewmate override"
+    },
+    "captainIdentity": {
+      "reserved": "This name is reserved for Captain, the built-in assistant.",
+      "name_taken": "That name belongs to Captain. Choose another name for this crewmate."
     }
   },
   "autoImprovement": {

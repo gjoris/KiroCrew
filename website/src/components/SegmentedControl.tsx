@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
+import { UI_LOCATION_ATTR } from '../uiLocations/uiLocation'
 
 export interface Segment<T extends string = string> {
   key: T
@@ -18,6 +19,19 @@ export interface Segment<T extends string = string> {
    * sequential tab stop and skipped by radio-key navigation.
    */
   disabled?: boolean
+  /**
+   * A find_ui marker for this segment's radio, spread into the entry at the
+   * call site (`{ key, label, ...uiLocation('<id>') }`). The generator reads
+   * the entry's `label` as the location's label; the radio (in either the row
+   * or the dropdown form) carries the attribute.
+   */
+  'data-ui-location'?: string
+}
+
+/** The segment's own find_ui marker, as attributes for the radio that draws it. */
+function segmentMarker(segment: Segment<string>): Record<string, string> {
+  const id = segment[UI_LOCATION_ATTR]
+  return id ? { [UI_LOCATION_ATTR]: id } : {}
 }
 
 interface SegmentedControlProps<T extends string = string> {
@@ -224,6 +238,7 @@ export default function SegmentedControl<T extends string = string>({ segments, 
                   <button
                     key={s.key}
                     ref={node => setRadioRef(s.key, node)}
+                    {...segmentMarker(s)}
                     type="button"
                     role="radio"
                     aria-checked={s.key === value}
@@ -303,6 +318,7 @@ export default function SegmentedControl<T extends string = string>({ segments, 
             <motion.button
               key={s.key}
               ref={node => setRadioRef(s.key, node)}
+              {...segmentMarker(s)}
               type="button"
               role="radio"
               aria-checked={isActive}

@@ -651,6 +651,36 @@ describe('crew editor — save', () => {
   })
 })
 
+describe('crew editor — Captain identity', () => {
+  it('renaming Captain writes display_name under its unchanged key', async () => {
+    const captain = { name: 'kirocrew-captain', kiro_agent: 'kirocrew-captain', workspace: 'default', memory_store: 'default' }
+    mockApi.kirocrewAgents.mockResolvedValue({ ...AGENTS_RESPONSE, agents: [DEFAULT_CREW, OTHER_CREW, captain] })
+    await renderRoster(3)
+    const sheet = await openEditor('Captain')
+    gotoPane(sheet, 'overview')
+    fireEvent.change(within(sheet).getByTestId('display-name-input'), { target: { value: 'Skipper' } })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(mockApi.updateKirocrewAgent).toHaveBeenCalled())
+    expect(mockApi.updateKirocrewAgent).toHaveBeenCalledWith(
+      'kirocrew-captain',
+      expect.objectContaining({ display_name: 'Skipper', kiro_agent: 'kirocrew-captain' }),
+    )
+  })
+
+  it("shows the localized refusal when a rename would take Captain's name", async () => {
+    const { ApiError } = await import('../api/apiError')
+    mockApi.updateKirocrewAgent.mockRejectedValueOnce(
+      new ApiError(409, "'Captain' is Captain's name", JSON.stringify({ code: 'assistant_name_taken' })),
+    )
+    await renderRoster()
+    const sheet = await openEditor('oncall')
+    gotoPane(sheet, 'overview')
+    fireEvent.change(within(sheet).getByTestId('display-name-input'), { target: { value: 'Captain' } })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save changes' }))
+    expect(await within(sheet).findByTestId('crew-sheet-error')).toHaveTextContent('That name belongs to Captain.')
+  })
+})
+
 describe('crew editor — stale writes', () => {
   it('does not close the panel when a write for a DIFFERENT crew lands', async () => {
     // Save A, dismiss while it is in flight, then open B: A's success must not
@@ -800,6 +830,32 @@ describe('crew editor — delete', () => {
     // offered rather than offered-then-rejected.
     expect(within(sheet).queryByRole('button', { name: 'Delete crewmate' })).not.toBeInTheDocument()
     expect(within(sheet).queryByText('Danger zone')).not.toBeInTheDocument()
+  })
+
+  it('shows Captain the danger zone disabled, with the reason, and never deletes it', async () => {
+    const captain = { name: 'kirocrew-captain', kiro_agent: 'kirocrew-captain', workspace: 'default', memory_store: 'default' }
+    mockApi.kirocrewAgents.mockResolvedValue({ ...AGENTS_RESPONSE, agents: [DEFAULT_CREW, OTHER_CREW, captain] })
+    await renderRoster(3)
+    // Captain's card and editor carry its display name.
+    const sheet = await openEditor('Captain')
+
+    const row = within(sheet).getByTestId('crew-rail-danger')
+    expect(row).toHaveAttribute('aria-disabled', 'true')
+    expect(row.getAttribute('title')).toContain("Captain is the built-in assistant and can't be deleted.")
+    fireEvent.click(row)
+    expect(within(sheet).queryByRole('button', { name: 'Delete crewmate' })).not.toBeInTheDocument()
+    expect(mockApi.deleteKirocrewAgent).not.toHaveBeenCalled()
+  })
+
+  it('treats Captain\'s key on another template as an ordinary crew', async () => {
+    const lookalike = { name: 'kirocrew-captain', kiro_agent: 'oncall-agent', workspace: 'oncall', memory_store: 'oncall-mem' }
+    mockApi.kirocrewAgents.mockResolvedValue({ ...AGENTS_RESPONSE, agents: [DEFAULT_CREW, OTHER_CREW, lookalike] })
+    await renderRoster(3)
+    const sheet = await openEditor('kirocrew-captain')
+
+    expect(within(sheet).getByTestId('crew-rail-danger')).not.toHaveAttribute('aria-disabled')
+    gotoPane(sheet, 'danger')
+    expect(within(sheet).getByRole('button', { name: 'Delete crewmate' })).toBeInTheDocument()
   })
 })
 

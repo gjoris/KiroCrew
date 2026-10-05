@@ -339,7 +339,12 @@ export function __resetErrorJournalForTests(): void {
 // close the import graph into a runtime cycle. Import it from
 // `./errorReport.prompt` directly.
 
-type ChatHandoffEntry = { prompt: string; ts: number }
+/**
+ * `target` names who a hand-off is for. Absent means a fresh /chat session
+ * (ChatPage's drain); a tagged entry is for one specific composer (Captain's
+ * thread on the Crewmates page) and is left alone by every other drain.
+ */
+type ChatHandoffEntry = { prompt: string; ts: number; target?: string }
 type ClaimedChatHandoffEntry = { prompt: string }
 
 /**
@@ -361,10 +366,10 @@ function decodeChatHandoffs(raw: string | null): ChatHandoffEntry[] {
     const now = Date.now()
     return entries.flatMap((entry): ChatHandoffEntry[] => {
       if (!entry || typeof entry !== 'object') return []
-      const { prompt, ts } = entry as { prompt?: unknown; ts?: unknown }
+      const { prompt, ts, target } = entry as { prompt?: unknown; ts?: unknown; target?: unknown }
       if (typeof prompt !== 'string' || !prompt) return []
       if (typeof ts !== 'number' || now - ts > HANDOFF_TTL_MS) return []
-      return [{ prompt, ts }]
+      return typeof target === 'string' && target ? [{ prompt, ts, target }] : [{ prompt, ts }]
     })
   } catch {
     return []
@@ -457,7 +462,7 @@ export function recoverClaimedChatHandoffs(): void {
  * session request settles, and replacing a single entry would silently discard
  * one diagnostic if both requests later needed to be re-staged.
  */
-export function handoffToChat(prompt: string | readonly string[]): boolean {
+export function handoffToChat(prompt: string | readonly string[], opts: { target?: string } = {}): boolean {
   const prompts = typeof prompt === 'string' ? [prompt] : prompt
   if (!prompts.length) return true
   let queued: ChatHandoffEntry[] = []
@@ -465,12 +470,18 @@ export function handoffToChat(prompt: string | readonly string[]): boolean {
     queued = decodeChatHandoffs(sessionStorage.getItem(ERROR_HANDOFF_KEY))
   } catch { /* best-effort storage: safeSetSessionItem handles the write */ }
   const now = Date.now()
-  queued.push(...prompts.map(item => ({ prompt: item, ts: now })))
+  const target = opts.target || undefined
+  queued.push(...prompts.map(item => (target ? { prompt: item, ts: now, target } : { prompt: item, ts: now })))
   return safeSetSessionItem(ERROR_HANDOFF_KEY, JSON.stringify(queued))
 }
 
-/** Drain one queued hand-off. Returns the oldest prompt, or null when absent/stale. */
-export function consumeChatHandoff(): string | null {
+/**
+ * Drain one queued hand-off addressed to `target` (absent: an untargeted one,
+ * for a fresh /chat session). Returns the oldest matching prompt, or null when
+ * absent/stale. Entries for other targets stay queued.
+ */
+export function consumeChatHandoff(opts: { target?: string } = {}): string | null {
+  const want = opts.target || undefined
   let raw: string | null = null
   try {
     raw = sessionStorage.getItem(ERROR_HANDOFF_KEY)
@@ -481,10 +492,10 @@ export function consumeChatHandoff(): string | null {
     return null
   }
   const queued = decodeChatHandoffs(raw)
-  const next = queued.shift()
-  if (!next) return null
+  const idx = queued.findIndex(entry => entry.target === want)
+  const next = idx >= 0 ? queued.splice(idx, 1)[0] : undefined
   if (queued.length) safeSetSessionItem(ERROR_HANDOFF_KEY, JSON.stringify(queued))
-  return next.prompt
+  return next ? next.prompt : null
 }
 
 // Module evaluation is the page-lifetime boundary: it repeats on reload but not
@@ -548,24 +559,30 @@ export function subscribeChatHandoff(fn: () => void): () => void {
  * `true`. Cancelling it would abort a hand-off the user had just accepted.
  * Ungated callers keep the ask.
  */
-export function sendErrorToChat(prompt: string, opts: { hard?: boolean; leaveGranted?: boolean } = {}): boolean {
+export function sendErrorToChat(
+  prompt: string,
+  opts: { hard?: boolean; leaveGranted?: boolean; to?: string; target?: string } = {},
+): boolean {
   // The app-level leave guard must run before staging: if the page refuses to
   // leave, a queued prompt would ambush the next chat the user opens even
   // though this click did not navigate. Hard mode is the root-boundary escape
   // hatch and deliberately bypasses the live React tree.
+  // `to` + `target` send the hand-off to one specific composer (Captain's
+  // thread) instead of a fresh /chat session; both default to the latter.
+  const to = opts.to || '/chat'
   const softNavigate = !opts.hard ? _softNavigate : null
   if (softNavigate && !opts.leaveGranted && _maySoftNavigate && !_maySoftNavigate()) return false
-  if (!handoffToChat(prompt)) return false
+  if (!handoffToChat(prompt, { target: opts.target })) return false
   if (softNavigate) {
     // Notify before navigating: an already-mounted ChatPage drains here, and a
     // not-yet-mounted one drains on mount instead.
     for (const fn of _handoffListeners) {
       try { fn() } catch { /* a bad subscriber must not strand the hand-off */ }
     }
-    softNavigate('/chat')
+    softNavigate(to)
     return true
   }
-  try { window.location.assign('/chat') } catch { /* nothing left to try */ }
+  try { window.location.assign(to) } catch { /* nothing left to try */ }
   return true
 }
 

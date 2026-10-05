@@ -344,7 +344,7 @@ describe('UpdateFoundModal — desktop source', () => {
       i18nT('components.updateFoundModal.could_not_save_choice'),
     ))
     expect(screen.getByRole('button', {
-      name: i18nT('components.askAgent.ask_the_agent'),
+      name: i18nT('components.askAgent.ask_the_agent_generic'),
     })).toBeInTheDocument()
     expect(dialog()).toBeInTheDocument()
     // But a modal that can NEVER close over a persistently failing write
@@ -541,7 +541,7 @@ describe('UpdateFoundModal — gateway source', () => {
     act(() => { store.dispatch(setUpdateProgress({ step: 'pulling', detail: '' })) })
     act(() => { store.dispatch(setUpdateProgress({ step: 'error', detail: 'zzq pip refused' })) })
     await waitFor(() => expect(screen.getByText('zzq pip refused')).toBeInTheDocument())
-    fireEvent.click(byName('components.askAgent.ask_the_agent'))
+    fireEvent.click(byName('components.askAgent.ask_the_agent_generic'))
     await waitFor(() => expect(dialog()).toBeNull())
   })
 
@@ -603,7 +603,7 @@ describe('UpdateFoundModal — gateway source', () => {
     expect(notice).toHaveAttribute('role', 'alert')
     expect(notice).toHaveTextContent('zzq arm refused')
     expect(within(notice).getByRole('button', {
-      name: i18nT('components.askAgent.ask_the_agent'),
+      name: i18nT('components.askAgent.ask_the_agent_generic'),
     })).toBeInTheDocument()
   })
 
@@ -628,7 +628,7 @@ describe('UpdateFoundModal — gateway source', () => {
     const notice = await screen.findByTestId('arm-copy-error')
     expect(notice).toHaveAttribute('role', 'alert')
     expect(within(notice).getByRole('button', {
-      name: i18nT('components.askAgent.ask_the_agent'),
+      name: i18nT('components.askAgent.ask_the_agent_generic'),
     })).toBeInTheDocument()
   })
 
@@ -695,7 +695,7 @@ describe('UpdateFoundModal — mandatory update (update_required)', () => {
 
     const notice = await screen.findByTestId('update-found-action-error')
     expect(within(notice).queryByRole('button', {
-      name: i18nT('components.askAgent.ask_the_agent'),
+      name: i18nT('components.askAgent.ask_the_agent_generic'),
     })).not.toBeInTheDocument()
     expect(dialog()).toBeInTheDocument()
   })
@@ -734,7 +734,7 @@ describe('UpdateFoundModal — mandatory update (update_required)', () => {
     act(() => { store.dispatch(setUpdateProgress({ step: 'pulling', detail: '' })) })
     act(() => { store.dispatch(setUpdateProgress({ step: 'error', detail: 'zzq pip refused' })) })
     await waitFor(() => expect(screen.getByText('zzq pip refused')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: i18nT('components.askAgent.ask_the_agent') })).toBeNull()
+    expect(screen.queryByRole('button', { name: i18nT('components.askAgent.ask_the_agent_generic') })).toBeNull()
     expect(screen.getByTestId('update-required-fallback-command').textContent)
       .toContain('zzq installer --channel stable')
     expect(dialog()).toBeInTheDocument()

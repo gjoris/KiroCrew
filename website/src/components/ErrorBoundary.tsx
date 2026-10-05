@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { recordEvent } from '../rum'
-import AskAgentButton, { askAgentHard } from './AskAgentButton'
+import AskAgentButton, { askAgentHard, askAgentLabel } from './AskAgentButton'
 import { recordError } from '../utils/errorReport'
 
 import { i18nT } from '../i18n/t'
@@ -111,7 +111,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               className="px-4 py-1.5 rounded-lg text-[13px] font-medium cursor-pointer border-none hover:opacity-90 transition-opacity"
               style={{ backgroundColor: '#33373d', color: '#f5f5f5', border: '1px solid #4a4f57' }}
               onClick={() => askAgentHard(this.state.error?.message ?? '')}>
-              {i18nT('components.askAgent.ask_the_agent')}
+              {askAgentLabel()}
             </button>
             <button
               className="px-4 py-1.5 rounded-lg text-[13px] font-medium cursor-pointer hover:opacity-90 transition-opacity"

@@ -329,6 +329,7 @@ import { errMessage } from '../utils/thunkError'
 
 
 import { i18nT } from '../i18n/t'
+import { uiLocation } from '../uiLocations/uiLocation'
 import { fmtDateFields } from '../i18n/format'
 import { fmtMessageTime, fmtMessageTimeFull } from './chat/messageTime'
 import { fetchDashboardConfig } from '../api/dashboardConfigQuery'
@@ -5117,7 +5118,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
    * held before it (page-layout.md, "The title belongs to the content column").
    */
   const topbarSessionsToggle = (
-    <button className="mc-touch-hit p-2 rounded-md text-text hover:text-text-strong hover:bg-bg-hover cursor-pointer bg-transparent border-none shrink-0" onClick={() => mobileSessions ? closeSidebar() : openSidebar()} aria-label={i18nT('pages.chatPage.toggle_sessions')} aria-expanded={mobileSessions} data-testid="mobile-topbar-sessions-toggle">
+    <button className="mc-touch-hit p-2 rounded-md text-text hover:text-text-strong hover:bg-bg-hover cursor-pointer bg-transparent border-none shrink-0" onClick={() => mobileSessions ? closeSidebar() : openSidebar()} aria-label={i18nT('pages.chatPage.toggle_sessions')} aria-expanded={mobileSessions} data-testid="mobile-topbar-sessions-toggle" {...uiLocation('chat.mobile-sessions-toggle')}>
       {mobileSessions ? <PanelLeftLight size={18} /> : <PanelLeftSolid size={18} />}
     </button>
   )
@@ -5324,6 +5325,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
           type="button"
           onClick={() => expandSidebar(flyout.open)}
           {...flyout.triggerProps}
+          {...uiLocation('chat.sessions-sidebar-toggle')}
           aria-haspopup={flyoutEligible ? 'menu' : undefined}
           aria-expanded={flyoutEligible ? flyout.open : undefined}
           // Geometry mirrored by TOGGLE_RECT (chat/SessionFlyout) — every
@@ -5625,6 +5627,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
             <Btn
               primary
               disabled={newSlotMutation.isPending}
+              {...uiLocation('chat.start-new-chat')}
               onClick={() => {
                 if (newSlotFailed) {
                   // Re-arm before state updates can let auto-selection run.
@@ -5757,6 +5760,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
                   onClick={toggleAct}
                   title={i18nT('pages.chatPage.open_activity_panel')}
                   aria-label={i18nT('pages.chatPage.open_activity_panel')}
+                  {...uiLocation('chat.side-panel-open')}
                 >
                   <SidePanelGlyph size={15} />
                 </Clickable>

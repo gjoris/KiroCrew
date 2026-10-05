@@ -709,7 +709,7 @@ describe('LinkedSurfacesSection', () => {
         key: SLOT, messages: 0, running: false, links: [link({ direction: 'both' })],
       }] as never)
       mount({ links: [link({ direction: 'both' })] })
-      const handOff = () => screen.queryByText(i18nT('components.askAgent.ask_the_agent'))
+      const handOff = () => screen.queryByText(i18nT('components.askAgent.ask_the_agent_generic'))
       fireEvent.click(await screen.findByText(L('unlink_from', { label: 'zzq-guild' })))
       await waitFor(() => expect(screen.getByTestId('linked-surfaces-error-discord')).toBeInTheDocument())
       await waitFor(() => expect(chatSlots).toHaveBeenCalled())
@@ -752,7 +752,7 @@ describe('LinkedSurfacesSection', () => {
       fireEvent.click(await screen.findByText(L('unlink_from', { label: 'zzq-guild' })))
       await waitFor(() => expect(screen.getByTestId('linked-surfaces-error-discord')).toBeInTheDocument())
       expect(screen.getByText(L('unlink_from', { label: 'zzq-guild' }))).toBeInTheDocument()
-      expect(screen.getByText(i18nT('components.askAgent.ask_the_agent'))).toBeInTheDocument()
+      expect(screen.getByText(i18nT('components.askAgent.ask_the_agent_generic'))).toBeInTheDocument()
       // The stale refusal's outcome line is the stale refusal's: an ordinary
       // failure keeps the bare item, as the hand-off reads everywhere else.
       expect(screen.queryByText(L('ask_agent_stale_outcome'))).not.toBeInTheDocument()

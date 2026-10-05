@@ -3,6 +3,7 @@ import { findReport, sendErrorToChat, type ErrorReport } from '../utils/errorRep
 import { buildErrorPrompt } from '../utils/errorReport.prompt'
 
 import { i18nT } from '../i18n/t'
+import { CAPTAIN_HANDOFF_TARGET, CAPTAIN_ROUTE, captainDisplayName, useCaptainName } from '../lib/captainHandoff'
 
 /**
  * "Ask the agent" — turns a dead-end error message into a chat that already
@@ -26,6 +27,32 @@ import { i18nT } from '../i18n/t'
  * `installSoftNavigate` seam in `utils/errorReport`, which degrades to a full
  * page load instead of throwing.
  */
+/** The shared hand-off label: "Ask <Captain's name>", or the generic one without a Captain. */
+export function askAgentLabel(name: string | null = captainDisplayName()): string {
+  return name ? i18nT('components.askAgent.ask_the_agent', { name }) : i18nT('components.askAgent.ask_the_agent_generic')
+}
+
+/** The shared hand-off tooltip, named the same way as {@link askAgentLabel}. */
+export function askAgentTitle(name: string | null = captainDisplayName()): string {
+  return name
+    ? i18nT('components.askAgent.open_a_chat_with_this_error_s_context_attached', { name })
+    : i18nT('components.askAgent.open_a_chat_with_this_error_s_context_attached_generic')
+}
+
+/**
+ * Stage and navigate. With a Captain on the roster the prompt is tagged for
+ * Captain's composer and the user lands on Captain's thread; without one (the
+ * user deleted it) this is the original fresh-/chat hand-off.
+ */
+function sendToCaptainOrChat(prompt: string, hard: boolean, leaveGranted?: boolean): boolean {
+  // The root-boundary hard hand-off names no leave decision, as before.
+  const opts = leaveGranted === undefined ? { hard } : { hard, leaveGranted }
+  if (captainDisplayName()) {
+    return sendErrorToChat(prompt, { ...opts, to: CAPTAIN_ROUTE, target: CAPTAIN_HANDOFF_TARGET })
+  }
+  return sendErrorToChat(prompt, opts)
+}
+
 export function askAgentPrompt(report: ErrorReport | { message: string }): string {
   return buildErrorPrompt(report, i18nT('components.askAgent.prompt_lead'))
 }
@@ -40,7 +67,7 @@ export function askAgentPrompt(report: ErrorReport | { message: string }): strin
  */
 export function askAgentHard(message: string): void {
   const resolved = findReport(message) ?? { message }
-  sendErrorToChat(askAgentPrompt(resolved), { hard: true })
+  sendToCaptainOrChat(askAgentPrompt(resolved), true)
 }
 
 export function handoffErrorToAgent({
@@ -60,7 +87,7 @@ export function handoffErrorToAgent({
   const resolved: ErrorReport | { message: string } | null =
     report ?? findReport(message) ?? (message ? { message } : null)
   if (!resolved) return false
-  if (!sendErrorToChat(askAgentPrompt(resolved), { hard, leaveGranted })) return false
+  if (!sendToCaptainOrChat(askAgentPrompt(resolved), hard, leaveGranted)) return false
   try { onHandoff?.() } catch { /* dismissal is cosmetic; never throw here */ }
   return true
 }
@@ -135,6 +162,8 @@ export default function AskAgentButton({
   // during render would therefore capture the pre-journal state — a bare message
   // with no stack and no component context — and since componentDidCatch writes an
   // instance field rather than state, nothing re-renders to correct it.
+  // Context-free subscription (no provider), so still safe in a boundary fallback.
+  const captainName = useCaptainName()
   if (!report && !message) return null
 
   const onClick = () => {
@@ -160,11 +189,11 @@ export default function AskAgentButton({
     <button
       type="button"
       className={`${base} ${skin} ${className}`}
-      title={i18nT('components.askAgent.open_a_chat_with_this_error_s_context_attached')}
+      title={askAgentTitle(captainName)}
       onClick={onClick}
     >
       <Sparkles size={13} aria-hidden="true" />
-      {label ?? i18nT('components.askAgent.ask_the_agent')}
+      {label ?? askAgentLabel(captainName)}
     </button>
   )
 }

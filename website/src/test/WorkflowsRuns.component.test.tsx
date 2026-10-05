@@ -196,7 +196,7 @@ describe("WorkflowsRuns", () => {
     // ErrorNotice apart from the shape the rule forbids.
     expect(
       await screen.findByRole("button", {
-        name: i18nT("components.askAgent.ask_the_agent"),
+        name: i18nT("components.askAgent.ask_the_agent_generic"),
       }),
     ).toBeInTheDocument();
   });

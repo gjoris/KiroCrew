@@ -11,6 +11,8 @@ import chatReducer, { selectSlotMessages, setActiveSlot, sseChatMessage } from '
 import type { SendReceipt, SendTurnOptions } from '../chat-core/transport/sendTurn'
 import { queuedSendStash } from '../hooks/useQueuedMessageActions'
 import { __resetPaneDraftsForTests } from '../utils/chatPaneDrafts'
+import { consumeChatHandoff, handoffToChat } from '../utils/errorReport'
+import { CAPTAIN_HANDOFF_TARGET, drainCaptainHandoffs } from '../lib/captainHandoff'
 import dashboardReducer from '../store/dashboardSlice'
 import notificationsReducer from '../store/notificationsSlice'
 
@@ -419,5 +421,35 @@ describe('ChatPane draft & recovery hardening (steer-only DM thread)', () => {
     const again = await composer()
     await waitFor(() => expect((again as HTMLTextAreaElement).value).toContain('about that'))
     expect((again as HTMLTextAreaElement).value).toContain('> the quoted reply')
+  })
+})
+
+describe('Captain error hand-off lands in the Captain pane composer', () => {
+  it('a Captain-tagged hand-off is drained into the live composer and not sent', async () => {
+    renderPane('dashboard:crew-assistant', { running: false, busyMode: 'steer-only' })
+    const box = await composer()
+    expect(handoffToChat('zzq captain diagnostic', { target: CAPTAIN_HANDOFF_TARGET })).toBe(true)
+    act(() => { expect(drainCaptainHandoffs('dashboard:crew-assistant')).toBe(1) })
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe('zzq captain diagnostic'))
+    expect(api.sendChat).not.toHaveBeenCalled()
+  })
+
+  it('an unsent draft in Captain\'s composer is kept, with the diagnostic appended', async () => {
+    renderPane('dashboard:crew-assistant', { running: false, busyMode: 'steer-only' })
+    const box = await composer()
+    fireEvent.change(box, { target: { value: 'half a question' } })
+    handoffToChat('zzq appended diagnostic', { target: CAPTAIN_HANDOFF_TARGET })
+    act(() => { drainCaptainHandoffs('dashboard:crew-assistant') })
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toContain('zzq appended diagnostic'))
+    expect((box as HTMLTextAreaElement).value).toContain('half a question')
+    expect(api.sendChat).not.toHaveBeenCalled()
+  })
+
+  it('leaves an untargeted (fresh /chat) hand-off for ChatPage', async () => {
+    renderPane('dashboard:crew-assistant', { running: false, busyMode: 'steer-only' })
+    await composer()
+    handoffToChat('zzq generic chat diagnostic')
+    act(() => { expect(drainCaptainHandoffs('dashboard:crew-assistant')).toBe(0) })
+    expect(consumeChatHandoff()).toBe('zzq generic chat diagnostic')
   })
 })

@@ -17,6 +17,7 @@ import { PostureDisclosureRow, CODE_BASE as POSTURE_CODE_BASE } from './PostureD
 import { MobileLoginCard } from './MobileLoginCard'
 
 import { i18nT } from '../../i18n/t'
+import { useCaptainName } from '../../lib/captainHandoff'
 import { fmtDateFields, fmtDateTime, fmtDuration, fmtList, fmtTime, fmtTimeNumeric, fmtUnit, toDate, compareText } from '../../i18n/format'
 import ErrorNotice from '../../components/ErrorNotice'
 import { copyToClipboard } from '../../utils/clipboard'
@@ -893,6 +894,10 @@ function isOwnerGateRefusal(error: unknown): boolean {
 
 function CredentialRedactionCard() {
   const qc = useQueryClient()
+  const captainName = useCaptainName()
+  const askAgentLabel = captainName
+    ? i18nT('pages.settings.securityPanel.credential_redaction_ask_agent', { name: captainName })
+    : i18nT('pages.settings.securityPanel.credential_redaction_ask_agent_generic')
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery<CredentialRedactionState>({
     queryKey: ['credential-redaction'],
     queryFn: api.credentialRedaction,
@@ -980,7 +985,7 @@ function CredentialRedactionCard() {
               className="mt-1"
               message={i18nT('pages.settings.securityPanel.credential_redaction_write_failed', { state: i18nT(view.enabled ? 'pages.settings.securityPanel.credential_redaction_still_on' : 'pages.settings.securityPanel.credential_redaction_still_off') })}
               askAgent
-              askAgentLabel={i18nT('pages.settings.securityPanel.credential_redaction_ask_agent')}
+              askAgentLabel={askAgentLabel}
               testId="credential-redaction-write-failed"
             />
           )}
@@ -995,7 +1000,7 @@ function CredentialRedactionCard() {
           variant="inline"
           message={i18nT('pages.settings.securityPanel.credential_redaction_owner_only')}
           askAgent
-          askAgentLabel={i18nT('pages.settings.securityPanel.credential_redaction_ask_agent')}
+          askAgentLabel={askAgentLabel}
           testId="credential-redaction-owner-only"
         />
       ) : isError ? (
@@ -1009,7 +1014,7 @@ function CredentialRedactionCard() {
           // The shared control's bare "Ask the agent" reads as a guess on an
           // error box (open a chat? file a report? let it change something?);
           // the label says what the click does.
-          askAgentLabel={i18nT('pages.settings.securityPanel.credential_redaction_ask_agent')}
+          askAgentLabel={askAgentLabel}
           testId="credential-redaction-read-failed"
           footer={
             <Btn onClick={() => { void refetch() }} disabled={isFetching} data-testid="credential-redaction-retry">
