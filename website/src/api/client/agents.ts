@@ -120,27 +120,27 @@ export interface CrewPanelHistoryRow {
   template: string
 }
 
-export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk }: ClientTransport) {
+export function createAgentsEndpoints({ post, put, del, j, jfetch, sessionKeyHeader: _sk }: ClientTransport) {
   const crew = {
     // Agents
-    agentsInstalled: () => fetch('/api/agents/installed').then(j),
+    agentsInstalled: () => jfetch('/api/agents/installed').then(j),
     // The Agent templates tab: roster with editability + references, create, delete.
     // Editing goes through `agentPatch` (description, prompt, tools, allowedTools,
     // model, skills); the server refuses the definition keys on a read-only spec
     // (409 template_read_only) and a delete on a referenced one (409
     // template_referenced, body.references lists what).
-    agentTemplates: () => fetch('/api/agents/templates').then(j),
+    agentTemplates: () => jfetch('/api/agents/templates').then(j),
     agentTemplateCreate: (body: { name: string; description?: string; from?: string }) => post('/api/agents/templates', body).then(j),
-    agentTemplateDelete: (name: string) => fetch('/api/agents/detail/' + encodeURIComponent(name), { method: 'DELETE' }).then(j),
-    agentDetail: (name: string) => fetch('/api/agents/detail/' + encodeURIComponent(name)).then(j),
-    agentPatch: (name: string, body: object) => fetch('/api/agents/detail/' + encodeURIComponent(name), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(j),
-    agentFork: (name: string, crew: string) => fetch('/api/agents/detail/' + encodeURIComponent(name) + '/fork', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew }) }).then(j),
-    agentPublish: (name: string, crew: string, newName: string) => fetch('/api/agents/detail/' + encodeURIComponent(name) + '/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew, name: newName }) }).then(j),
+    agentTemplateDelete: (name: string) => jfetch('/api/agents/detail/' + encodeURIComponent(name), { method: 'DELETE' }).then(j),
+    agentDetail: (name: string) => jfetch('/api/agents/detail/' + encodeURIComponent(name)).then(j),
+    agentPatch: (name: string, body: object) => jfetch('/api/agents/detail/' + encodeURIComponent(name), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(j),
+    agentFork: (name: string, crew: string) => jfetch('/api/agents/detail/' + encodeURIComponent(name) + '/fork', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew }) }).then(j),
+    agentPublish: (name: string, crew: string, newName: string) => jfetch('/api/agents/detail/' + encodeURIComponent(name) + '/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew, name: newName }) }).then(j),
     // Rebind the crew to `name`'s origin AND delete the private copy in one atomic
     // server call, so a reset can no longer end half-done (rebound but copy kept, or
     // vice versa). May reject with origin_missing / stale_binding / not_a_private_copy
     // / ambiguous_template_name / rebind_failed.
-    agentReset: (name: string, crew: string) => fetch('/api/agents/detail/' + encodeURIComponent(name) + '/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew }) }).then(j),
+    agentReset: (name: string, crew: string) => jfetch('/api/agents/detail/' + encodeURIComponent(name) + '/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew }) }).then(j),
     // Kiro Crew agents
     // sessionKey identifies the CHAT SLOT whose project scope applies. The
     // server resolves project-local agents through
@@ -150,13 +150,13 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
     // vanish from the picker. Surfaces with no slot context (Channels,
     // Schedule) pass nothing and keep the global-only view.
     kirocrewAgents: (sessionKey?: string) =>
-      fetch('/api/agents', {
+      jfetch('/api/agents', {
         headers: sessionKey ? { 'X-Session-Key': sessionKey } : { ..._sk },
       }).then(j),
     /** The model a new session on this Kiro Crew agent would run on. Empty
      *  `agent` resolves the configured default agent. */
     agentResolvedModel: (agent: string) =>
-      fetch('/api/agents/resolved-model?agent=' + encodeURIComponent(agent)).then(j),
+      jfetch('/api/agents/resolved-model?agent=' + encodeURIComponent(agent)).then(j),
     /** Execution choices for a chat: configured members AND installed shared
      *  templates, each row tagged with its `selection_kind`. Read-only -- unlike
      *  the sync route it enrols nothing and allocates no member memory, so
@@ -164,14 +164,14 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
      *  scoping as `kirocrewAgents`: project templates come from THIS chat's
      *  project, never from another open pane's. */
     agentCatalog: (sessionKey?: string) =>
-      fetch('/api/agents/catalog', {
+      jfetch('/api/agents/catalog', {
         headers: sessionKey ? { 'X-Session-Key': sessionKey } : { ..._sk },
       }).then(j) as Promise<{ agents: KiroCrewAgent[]; default_agent: string }>,
     createKirocrewAgent: (body: object) => post('/api/agents', body).then(j),
     // Crew Members page — roster of GLOBAL crews with DM-thread binding and the
     // cheap live-status fields the backend can answer without IO (richer live
     // detail rides the already-subscribed WS `slots` frames).
-    members: () => fetch('/api/members').then(j) as Promise<{ members: MemberRosterRow[] }>,
+    members: () => jfetch('/api/members').then(j) as Promise<{ members: MemberRosterRow[] }>,
     // Idempotent get-or-create of a member's pinned DM thread. Member slots are
     // born ONLY through this route (the generic slot-create endpoint refuses
     // mode="member"), so this is also the only place a member slot key comes from.
@@ -182,7 +182,7 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
     // slugs are lossy, so the backend filters the shared log by exact name.
     // Fetched on drawer open, never polled.
     memberActivity: (slug: string, member: string) =>
-      fetch(
+      jfetch(
         '/api/members/' + encodeURIComponent(slug) + '/activity?member=' + encodeURIComponent(member),
       ).then(j) as Promise<{
         slug: string
@@ -198,7 +198,7 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
     // reads. `member` is the exact crew name because the server checks it against
     // the log's own header (slugs are lossy, so two crews can share one).
     memberProjections: (slug: string, member: string) =>
-      fetch(
+      jfetch(
         '/api/members/' + encodeURIComponent(slug) + '/projections?member=' + encodeURIComponent(member),
       ).then(j) as Promise<ProjectionsBlock>,
     // The crew's published webview: metadata plus the composed document. Read
@@ -209,14 +209,14 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
     // because the record carries an ownership claim the server checks against it;
     // slugs are lossy, so two crews can share one.
     memberPanel: (slug: string, member: string) =>
-      fetch(
+      jfetch(
         '/api/members/' + encodeURIComponent(slug) + '/panel?member=' + encodeURIComponent(member),
       ).then(j) as Promise<{ panel: CrewPanelMeta | null; html: string | null }>,
     // The crewmate's self-maintained briefing markdown. Read-only from the UI
     // (no editor: the file is agent-written and edited where the crewmate keeps
     // it). `member` is the exact crew name (slugs are lossy).
     memberBriefing: (slug: string, member: string) =>
-      fetch(
+      jfetch(
         '/api/members/' + encodeURIComponent(slug) + '/briefing?member=' + encodeURIComponent(member),
       ).then(j) as Promise<{
         slug: string
@@ -241,7 +241,7 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
     // writes are owner actions. `remove` rather than `delete`: a reserved word
     // reads badly as a method name at every call site.
     teams: {
-      list: () => fetch('/api/teams').then(j) as Promise<{ teams: CrewTeam[] }>,
+      list: () => jfetch('/api/teams').then(j) as Promise<{ teams: CrewTeam[] }>,
       create: (body: { name: string; members: string[] }) =>
         post('/api/teams', body).then(j) as Promise<{ team: CrewTeam }>,
       update: (id: string, body: { name?: string; add?: string[]; remove?: string[] }) =>
@@ -261,7 +261,7 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
      * Owner-gated, same-origin cookie auth.
      */
     appearances: {
-      list: () => fetch('/api/appearances').then(j) as Promise<{ packs?: unknown }>,
+      list: () => jfetch('/api/appearances').then(j) as Promise<{ packs?: unknown }>,
       /**
        * The whole pack, inlined. Read it through `hooks/usePackDetail` (a React
        * Query entry, `staleTime: Infinity`) rather than directly: this route
@@ -279,7 +279,7 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
        * (`packSlotUrl`) cannot answer.
        */
       detail: (id: string) =>
-        fetch('/api/appearances/' + encodeURIComponent(id)).then(j) as Promise<unknown>,
+        jfetch('/api/appearances/' + encodeURIComponent(id)).then(j) as Promise<unknown>,
       /** Install an exported pack. The JSON envelope, not multipart: the bundle is
        *  already parsed client-side to reject an obviously wrong pick, so posting
        *  it back as a file would only re-serialize what we hold. */
@@ -300,7 +300,7 @@ export function createAgentsEndpoints({ post, put, del, j, sessionKeyHeader: _sk
     uploadCrewAvatar: (name: string, file: Blob) => {
       const form = new FormData()
       form.append('file', file, 'avatar.png')
-      return fetch('/api/agents/' + encodeURIComponent(name) + '/avatar', {
+      return jfetch('/api/agents/' + encodeURIComponent(name) + '/avatar', {
         method: 'POST',
         body: form,
       }).then(j) as Promise<{ ok?: boolean; staged?: boolean; token?: string; error?: string }>

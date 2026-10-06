@@ -24,7 +24,7 @@ export type MonitorWrite = {
 
 export type MonitorResponse = { ok: true; monitor: unknown }
 
-export function createMonitorsEndpoints({ post, patch, j }: ClientTransport) {
+export function createMonitorsEndpoints({ post, patch, j, jfetch }: ClientTransport) {
   const loops = {
     /** All goal loops across sessions — every record the service holds, ACTIVE
      *  OR STOPPED (a stopped loop keeps `active: false` + `stopped_reason`, which
@@ -32,12 +32,12 @@ export function createMonitorsEndpoints({ post, patch, j }: ClientTransport) {
      *  `{enabled:false, loops:[]}` when the auto-nudge feature flag is off, so
      *  callers need no flag check. */
     autonudgeList: (): Promise<AutoNudgeListResponse> =>
-      fetch('/api/autonudge').then(j),
+      jfetch('/api/autonudge').then(j),
     autonudgeForSlot: (slot: string): Promise<{ enabled: boolean; loop: unknown | null }> =>
-      fetch('/api/autonudge/slot/' + encodeURIComponent(slot)).then(j),
+      jfetch('/api/autonudge/slot/' + encodeURIComponent(slot)).then(j),
     /** Structured monitor records include terminal outcomes for inspection. */
     monitorsList: (): Promise<{ enabled: boolean; monitors: unknown[] }> =>
-      fetch('/api/monitors').then(j),
+      jfetch('/api/monitors').then(j),
     /** `max_runtime_ceiling_secs` is the LIVE operator ceiling
      *  (`monitoring.max_runtime_secs`), which a default install sets far below the
      *  contract's absolute maximum; the popover bounds its runtime input by it. */
@@ -46,7 +46,7 @@ export function createMonitorsEndpoints({ post, patch, j }: ClientTransport) {
       monitor: unknown | null
       max_runtime_ceiling_secs?: number
     }> =>
-      fetch('/api/monitors/slot/' + encodeURIComponent(slot)).then(j),
+      jfetch('/api/monitors/slot/' + encodeURIComponent(slot)).then(j),
     monitorCreate: (body: Required<MonitorWrite>): Promise<MonitorResponse> =>
       post('/api/monitors', body).then(j) as Promise<MonitorResponse>,
     monitorUpdate: (id: string, body: MonitorWrite): Promise<MonitorResponse> =>

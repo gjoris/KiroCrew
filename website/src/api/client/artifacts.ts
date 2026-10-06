@@ -23,7 +23,7 @@ export interface AppPublishProvider {
   endpoint: string
 }
 
-export function createArtifactsEndpoints({ get, post, del, patch, j, checkSessionExpired, removeAuthBanner }: ClientTransport) {
+export function createArtifactsEndpoints({ get, post, del, patch, j, jfetch, checkSessionExpired, removeAuthBanner }: ClientTransport) {
   const library = {
     // Artifacts
     /** List artifacts. `session` scopes to the artifacts one chat session
@@ -67,7 +67,7 @@ export function createArtifactsEndpoints({ get, post, del, patch, j, checkSessio
      *  slot, which is correct deny-by-default) — callers treat a breadcrumb as
      *  best-effort and swallow the failure rather than failing the user's click. */
     recordArtifactReference: (slug: string, slot: string, metadata?: { message_ts?: string; widget_index?: number }) =>
-      fetch(`/api/artifacts/${encodeURIComponent(slug)}/events`, {
+      jfetch(`/api/artifacts/${encodeURIComponent(slug)}/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Session-Key': `dashboard:${slot}` },
         body: JSON.stringify({ type: 'referenced', ...(metadata ? { metadata } : {}) }),

@@ -137,7 +137,7 @@ export function crewPeerUrl(instanceId: string, path: string): string {
   return '/api/instances/' + encodeURIComponent(instanceId) + '/proxy/' + path
 }
 
-export function createInstancesEndpoints({ get, post, del, patch, j, jInstancesDisabled, sessionKeyHeader: _sk }: ClientTransport) {
+export function createInstancesEndpoints({ get, post, del, patch, j, jfetch, jInstancesDisabled, sessionKeyHeader: _sk }: ClientTransport) {
   const registryAndTransfer = {
     // Instances (multi-instance management) — owner-only, gated by instances.enabled.
     // listInstances throws ApiError(403) when the feature is disabled; callers
@@ -222,7 +222,7 @@ export function createInstancesEndpoints({ get, post, del, patch, j, jInstancesD
      *  confirm step: installing the same file twice is two sessions, which is the
      *  documented behaviour rather than an accident to guard against. */
     importSessionFromFile: async (file: Blob) => {
-      const r = await fetch('/api/chat/slots/import', {
+      const r = await jfetch('/api/chat/slots/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream', ..._sk },
         body: file,
@@ -250,7 +250,7 @@ export function createInstancesEndpoints({ get, post, del, patch, j, jInstancesD
     // Federated session search across the local gateway + every CONNECTED remote
     // instance (backend rank-interleaves; remote rows carry instance_id/_name).
     // 403 = instances feature disabled — callers fall back to sessionsSearch.
-    instancesSearchSessions: (q: string, limit = 50) => fetch('/api/instances/search-sessions?q=' + encodeURIComponent(q) + '&limit=' + limit).then(j),
+    instancesSearchSessions: (q: string, limit = 50) => jfetch('/api/instances/search-sessions?q=' + encodeURIComponent(q) + '&limit=' + limit).then(j),
     /** What a connected crew can do: its version, agent roster, model list, effort
      *  levels and workspaces. The per-instance counterpart to `/api/agents`,
      *  `/api/models`, `/api/effort-levels` and `/api/workspaces`, which are all
@@ -263,7 +263,7 @@ export function createInstancesEndpoints({ get, post, del, patch, j, jInstancesD
      *  `unavailable` names the reads that failed, per field, so one unreachable
      *  roster disables exactly its own control instead of blanking the shelf. */
     instancesCapabilities: (instanceId: string) =>
-      fetch('/api/instances/' + encodeURIComponent(instanceId) + '/capabilities').then(j) as Promise<RemoteCrewCapabilities>,
+      jfetch('/api/instances/' + encodeURIComponent(instanceId) + '/capabilities').then(j) as Promise<RemoteCrewCapabilities>,
 
     // A CONNECTED remote instance's LIVE sessions, read through an owner-only,
     // GET-only hub route. NOT the generic instance proxy, which this first used: the
@@ -280,7 +280,7 @@ export function createInstancesEndpoints({ get, post, del, patch, j, jInstancesD
     // peer's /api/sessions, and the prefix row that would admit them would also admit
     // clear-all, session-restart, a memory read and a token-spending summarize.
     instanceChatSlots: (id: string) =>
-      fetch('/api/instances/' + encodeURIComponent(id) + '/chat-slots').then(j),
+      jfetch('/api/instances/' + encodeURIComponent(id) + '/chat-slots').then(j),
     // The crew chat window's wire: a call on a CONNECTED peer's own chat API,
     // through the owner-only proxy. `path` is the peer path (`api/chat/...`,
     // query included); the hub refuses anything outside `api/chat` and

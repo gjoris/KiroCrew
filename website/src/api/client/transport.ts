@@ -55,6 +55,17 @@ export interface ClientTransport {
    * can never be opted out.
    */
   jInstancesDisabled: (r: Response) => ReturnType<Response['json']>
+  /**
+   * `fetch` for a method that talks RAW transport (`jfetch('/api/…').then(j)`)
+   * rather than going through the five helpers. Identical to `fetch` on the
+   * success path, but a rejection with no HTTP `Response` — a network drop
+   * (`TypeError: Failed to fetch`) or a `withDeadline` timeout — is written to
+   * the error journal (burst-capped per endpoint; deliberate `AbortError`s are
+   * skipped) and the report pinned to the rejection, before it is rethrown
+   * UNCHANGED. The one chokepoint that gives the raw-fetch family the same
+   * unanswered-failure journaling the helpers now get.
+   */
+  jfetch: (input: string, init?: RequestInit) => Promise<Response>
   /** The shared `X-Session-Key: dashboard:ui` header, for a raw `fetch` that must still carry it. */
   sessionKeyHeader: { 'X-Session-Key': string }
   /** The pre-body 403 `X-Auth-Required` hook, for a method that reads its own response. */

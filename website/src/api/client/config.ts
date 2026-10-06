@@ -159,20 +159,20 @@ export interface AcpBackendProbe {
   }
 }
 
-export function createConfigEndpoints({ post, put, j }: ClientTransport) {
+export function createConfigEndpoints({ post, put, j, jfetch }: ClientTransport) {
   const settings = {
     // Agent config
-    agentConfig: () => fetch('/api/agent/config').then(j),
+    agentConfig: () => jfetch('/api/agent/config').then(j),
     saveAgentConfig: (config: object) => put('/api/agent/config', { config }).then(j),
-    defaultAgent: () => fetch('/api/config/default-agent').then(j),
+    defaultAgent: () => jfetch('/api/config/default-agent').then(j),
     setDefaultAgent: (agent: string) => put('/api/config/default-agent', { agent }).then(j),
-    kirocrewConfig: () => fetch('/api/config/kirocrew').then(j),
+    kirocrewConfig: () => jfetch('/api/config/kirocrew').then(j),
     saveKirocrewConfig: (agent: object) => put('/api/config/kirocrew', { agent }).then(j) as Promise<{ ok?: boolean; restart_required?: boolean; error?: string }>,
-    patchConfig: (path: string, value: unknown) => fetch('/api/config/kirocrew', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, value }) }).then(j),
+    patchConfig: (path: string, value: unknown) => jfetch('/api/config/kirocrew', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, value }) }).then(j),
     // Owner-only, and absent (404) on an older gateway. Both of those reach the
     // caller as a rejection, which is the intended signal: "no probe information",
     // to be treated as fail-open rather than as a verdict.
-    acpBackends: () => fetch('/api/acp-backends').then(j) as Promise<{ backends: AcpBackendProbe[] }>,
+    acpBackends: () => jfetch('/api/acp-backends').then(j) as Promise<{ backends: AcpBackendProbe[] }>,
     // Re-take ONE backend's verdict with this gateway's cached absence dropped first,
     // and answer with that backend's row in the shape `acpBackends` sends -- so the
     // caller splices it into the list it already holds rather than keeping a second
@@ -183,7 +183,7 @@ export function createConfigEndpoints({ post, put, j }: ClientTransport) {
 
   const dashboardRead = {
     // Dashboard config
-    dashboardConfig: () => fetch('/api/dashboard/config').then(j),
+    dashboardConfig: () => jfetch('/api/dashboard/config').then(j),
   }
 
   const dashboardWrite = {

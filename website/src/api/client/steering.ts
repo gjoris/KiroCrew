@@ -13,7 +13,7 @@ import type { ClientTransport } from './transport'
 const projectHeader = (projectKey?: string): HeadersInit | undefined =>
   projectKey ? { 'X-Steering-Project': projectKey } : undefined
 
-export function createSteeringEndpoints({ post, put, del, j, sessionKeyHeader: _sk }: ClientTransport) {
+export function createSteeringEndpoints({ post, put, del, j, jfetch, sessionKeyHeader: _sk }: ClientTransport) {
   const files = {
     // Steering (Kiro steering files — ~/.kiro/steering + <project>/.kiro/steering)
     // sessionKey names the CHAT SLOT whose project `workspace/` keys resolve
@@ -24,9 +24,9 @@ export function createSteeringEndpoints({ post, put, del, j, sessionKeyHeader: _
     // a key created under one project must stay readable, editable and deletable
     // from the same page load.
     steeringFiles: (sessionKey?: string) =>
-      fetch('/api/steering', { headers: sessionKey ? { 'X-Session-Key': sessionKey } : { ..._sk } }).then(j),
+      jfetch('/api/steering', { headers: sessionKey ? { 'X-Session-Key': sessionKey } : { ..._sk } }).then(j),
     steeringFile: (key: string, sessionKey?: string) =>
-      fetch('/api/steering/' + key.split('/').map(encodeURIComponent).join('/'), {
+      jfetch('/api/steering/' + key.split('/').map(encodeURIComponent).join('/'), {
         headers: sessionKey ? { 'X-Session-Key': sessionKey } : { ..._sk },
       }).then(j),
     // projectKey is the `project_key` the listing returned: a workspace write

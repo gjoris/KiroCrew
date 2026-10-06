@@ -109,11 +109,11 @@ export interface WebhookTestResult {
   error?: string
 }
 
-export function createHooksEndpoints({ post, put, del, j }: ClientTransport) {
+export function createHooksEndpoints({ post, put, del, j, jfetch }: ClientTransport) {
   const triggers = {
     // Hooks
-    hooks: () => fetch('/api/hooks').then(j),
-    kiroHooks: () => fetch('/api/kiro-hooks').then(j),
+    hooks: () => jfetch('/api/hooks').then(j),
+    kiroHooks: () => jfetch('/api/kiro-hooks').then(j),
     createHook: (body: object) => post('/api/hooks', body).then(j),
     updateHook: (id: string, body: object) => put('/api/hooks/' + id, body).then(j),
     deleteHook: (id: string) => del('/api/hooks/' + id).then(j),
@@ -122,7 +122,7 @@ export function createHooksEndpoints({ post, put, del, j }: ClientTransport) {
     // Inbound webhooks (POST /api/hooks/agent) — token store, registered
     // contexts, run history. All dashboard-authed; the webhook bearer token is
     // never used from the browser.
-    webhooks: () => fetch('/api/webhooks').then(j),
+    webhooks: () => jfetch('/api/webhooks').then(j),
     // `require_signature` defaults to true server-side; a destination is required
     // for every newly created first-class source.
     createWebhookToken: (label: string, requireSignature = true, agent = '') =>
@@ -134,7 +134,7 @@ export function createHooksEndpoints({ post, put, del, j }: ClientTransport) {
     updateWebhookToken: (
       id: string,
       patch: { agent?: string; enabled?: boolean; label?: string },
-    ) => fetch('/api/webhooks/tokens/' + encodeURIComponent(id), {
+    ) => jfetch('/api/webhooks/tokens/' + encodeURIComponent(id), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),

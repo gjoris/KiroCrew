@@ -9,10 +9,10 @@ import { parseErrorCode } from '../../utils/errorReport'
 import { ApiError } from '../apiError'
 import type { ClientTransport } from './transport'
 
-export function createVoiceEndpoints({ post, put, j }: ClientTransport) {
+export function createVoiceEndpoints({ post, put, j, jfetch }: ClientTransport) {
   const speechToText = {
     // STT
-    sttConfig: () => fetch('/api/config/stt').then(j),
+    sttConfig: () => jfetch('/api/config/stt').then(j),
     saveSttConfig: (body: {
       enabled?: boolean
       provider?: string
@@ -32,13 +32,13 @@ export function createVoiceEndpoints({ post, put, j }: ClientTransport) {
     // download in flight. Separate from `sttConfig` because it is POLLED while a
     // model is being fetched, and polling the config endpoint would re-read and
     // re-probe configuration several times a second.
-    sttStatus: () => fetch('/api/stt/status').then(j),
+    sttStatus: () => jfetch('/api/stt/status').then(j),
     // The Amazon Transcribe custom vocabularies the configured profile and region
     // can use, for the vocabulary picker. `listed: false` with no names unless
     // `transcribe` is the provider and its AWS use is confirmed at call time;
     // echoes the profile and region it listed, so a reply about a target the user
     // has since changed can be told apart from one about the current target.
-    sttVocabularies: () => fetch('/api/stt/vocabularies').then(j),
+    sttVocabularies: () => jfetch('/api/stt/vocabularies').then(j),
     // Fetch a model now, so the cost is paid at a moment the user chose rather
     // than in the middle of their first dictation. Returns as soon as the transfer
     // is under way; progress is read from `sttStatus`.
@@ -66,16 +66,16 @@ export function createVoiceEndpoints({ post, put, j }: ClientTransport) {
     sttTranscribe: (blob: Blob, ext = 'webm') => {
       const fd = new FormData()
       fd.append('audio', blob, `recording.${ext}`)
-      return fetch('/api/stt/transcribe', { method: 'POST', body: fd }).then(j)
+      return jfetch('/api/stt/transcribe', { method: 'POST', body: fd }).then(j)
     },
   }
 
   const voiceSettings = {
     // Voice
-    voiceConfig: () => fetch('/api/voice/config').then(j),
+    voiceConfig: () => jfetch('/api/voice/config').then(j),
     updateVoiceConfig: (body: object) => put('/api/voice/config', body).then(j),
-    voiceVoices: () => fetch('/api/voice/voices').then(j),
-    voiceSystemVoices: () => fetch('/api/voice/system-voices').then(j),
+    voiceVoices: () => jfetch('/api/voice/voices').then(j),
+    voiceSystemVoices: () => jfetch('/api/voice/system-voices').then(j),
   }
 
   const synthesis = {

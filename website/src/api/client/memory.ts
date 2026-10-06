@@ -85,7 +85,7 @@ const memoryQuery = (q: MemoryCarveQuery): string => {
   return s ? `?${s}` : ''
 }
 
-export function createMemoryEndpoints({ get, post, put, del, j }: ClientTransport) {
+export function createMemoryEndpoints({ get, post, put, del, j, jfetch }: ClientTransport) {
   const memoryAndVectors = {
     // Memory
     //
@@ -95,13 +95,13 @@ export function createMemoryEndpoints({ get, post, put, del, j }: ClientTranspor
     // owner-gated and an undeclared name answers 404 `unknown_memory_store`. See
     // `memoryStoreQuery`. `/api/memory/settings` is deliberately NOT in the set:
     // the consolidation cadence is one install-wide setting, not a per-store one.
-    memoryPreferences: (store?: string) => fetch('/api/memory/preferences' + memoryStoreQuery(store)).then(j) as Promise<{ content?: string; content_redacted?: boolean }>,
+    memoryPreferences: (store?: string) => jfetch('/api/memory/preferences' + memoryStoreQuery(store)).then(j) as Promise<{ content?: string; content_redacted?: boolean }>,
     saveMemoryPreferences: (content: string, store?: string) => put('/api/memory/preferences' + memoryStoreQuery(store), { content }),
-    memoryProjects: (store?: string) => fetch('/api/memory/projects' + memoryStoreQuery(store)).then(j) as Promise<{ content?: string; content_redacted?: boolean }>,
+    memoryProjects: (store?: string) => jfetch('/api/memory/projects' + memoryStoreQuery(store)).then(j) as Promise<{ content?: string; content_redacted?: boolean }>,
     saveMemoryProjects: (content: string, store?: string) => put('/api/memory/projects' + memoryStoreQuery(store), { content }),
-    memoryHistory: (store?: string) => fetch('/api/memory/history' + memoryStoreQuery(store)).then(j) as Promise<{ content?: string; content_redacted?: boolean }>,
+    memoryHistory: (store?: string) => jfetch('/api/memory/history' + memoryStoreQuery(store)).then(j) as Promise<{ content?: string; content_redacted?: boolean }>,
     saveMemoryHistory: (content: string, store?: string) => put('/api/memory/history' + memoryStoreQuery(store), { content }),
-    memorySettings: () => fetch('/api/memory/settings').then(j),
+    memorySettings: () => jfetch('/api/memory/settings').then(j),
     saveMemorySettings: (s: {history_idle_hours?: number; history_max_days?: number}) => put('/api/memory/settings', s),
     /** Every declared store with its lineage, row counts and backup state.
      *
@@ -113,16 +113,16 @@ export function createMemoryEndpoints({ get, post, put, del, j }: ClientTranspor
      *  for that store, since sending it would take the owner gate for a read that
      *  needs none. */
     memoryStores: () =>
-      fetch('/api/memory/stores').then(j) as Promise<{
+      jfetch('/api/memory/stores').then(j) as Promise<{
         stores: MemoryStoreSummary[]
         active: string
       }>,
     memoryRetired: (store?: string, limit?: number, offset = 0) =>
-      fetch('/api/memory/retired' + memoryQuery({ store, limit, ...(offset ? { offset } : {}) })).then(j) as Promise<{ retired: RetiredMemory[] }>,
+      jfetch('/api/memory/retired' + memoryQuery({ store, limit, ...(offset ? { offset } : {}) })).then(j) as Promise<{ retired: RetiredMemory[] }>,
     memoryRestoreRetired: (id: string, store?: string) =>
       post('/api/memory/retired/restore', { id, ...(store ? { store } : {}) }).then(j) as Promise<{ ok: boolean }>,
     memoryBackups: (store?: string) =>
-      fetch('/api/memory/backups' + memoryStoreQuery(store)).then(j) as Promise<{
+      jfetch('/api/memory/backups' + memoryStoreQuery(store)).then(j) as Promise<{
         backups: MemoryBackup[]; pending?: boolean; restart_required?: boolean
         pending_restore?: { backup_name: string; staged_at: string } | null
         activation_failed?: boolean
@@ -149,11 +149,11 @@ export function createMemoryEndpoints({ get, post, put, del, j }: ClientTranspor
      *  409 `facets_unsupported` on the v1 lineage, whose rows have no facet
      *  columns — a refusal a caller must render as such, never as no rows. */
     memoryCarve: (q: MemoryCarveQuery = {}) =>
-      fetch('/api/memory/carve' + memoryQuery(q)).then(j) as Promise<MemoryCarveResult>,
+      jfetch('/api/memory/carve' + memoryQuery(q)).then(j) as Promise<MemoryCarveResult>,
     memoryRecall: (query: string, store: string) =>
-      fetch('/api/memory/recall?q=' + encodeURIComponent(query) + memoryStoreQuery(store, '&')).then(j),
+      jfetch('/api/memory/recall?q=' + encodeURIComponent(query) + memoryStoreQuery(store, '&')).then(j),
     memoryRecords: (store: string, query: MemoryRecordQuery, offset = 0, limit = 50) =>
-      fetch('/api/memory/records?' + new URLSearchParams({ store: store || 'default', q: query.q, kind: query.kind, offset: String(offset), limit: String(limit) })).then(j) as Promise<{ entries: MemoryRecord[]; total: number; has_more: boolean }>,
+      jfetch('/api/memory/records?' + new URLSearchParams({ store: store || 'default', q: query.q, kind: query.kind, offset: String(offset), limit: String(limit) })).then(j) as Promise<{ entries: MemoryRecord[]; total: number; has_more: boolean }>,
     memoryEditPreview: (store: string, selection: MemoryRecordSelection, operation: MemoryEditOperation) =>
       post('/api/memory/bulk/preview', { store: store || 'default', selection, operation }).then(j) as Promise<MemoryEditPreview>,
     memoryEditPreviewPage: (store: string, previewId: string, offset: number) =>
@@ -163,26 +163,26 @@ export function createMemoryEndpoints({ get, post, put, del, j }: ClientTranspor
     memoryQuerySelectionRefresh: (store: string, selection: Extract<MemoryRecordSelection, { query: MemoryRecordQuery }>) =>
       post('/api/memory/records/refresh', { store: store || 'default', selection }).then(j) as Promise<{ matched_count: number }>,
     memoryRecordHistory: (store: string, record: MemoryRecordRef, limit = 25, offset = 0) =>
-      fetch('/api/memory/records/history?' + new URLSearchParams({ store: store || 'default', kind: record.kind, id: record.id, limit: String(limit), ...(offset ? { offset: String(offset) } : {}) })).then(j) as Promise<{ entries: MemoryRecordRevision[]; has_more: boolean; current_revision: number }>,
+      jfetch('/api/memory/records/history?' + new URLSearchParams({ store: store || 'default', kind: record.kind, id: record.id, limit: String(limit), ...(offset ? { offset: String(offset) } : {}) })).then(j) as Promise<{ entries: MemoryRecordRevision[]; has_more: boolean; current_revision: number }>,
     memoryEditApply: (store: string, previewId: string) =>
       post('/api/memory/bulk/apply', { store: store || 'default', preview_id: previewId }).then(j) as Promise<{ ok: true; changed_count: number }>,
     memberMemoryPage: (store: string, kind: 'semantic' | 'episodic', offset: number, query = '') =>
-      fetch('/api/memory/' + kind + '?store=' + encodeURIComponent(store) + '&limit=100&offset=' + offset + (query ? '&q=' + encodeURIComponent(query) : '')).then(j),
+      jfetch('/api/memory/' + kind + '?store=' + encodeURIComponent(store) + '&limit=100&offset=' + offset + (query ? '&q=' + encodeURIComponent(query) : '')).then(j),
     memorySeed: (sourceStore: string, store: string, items: { kind: 'fact' | 'directive' | 'episode'; id: string }[]) =>
       post('/api/memory/seed', { source_store: sourceStore, store, items }).then(j) as Promise<{
         partial?: boolean
         results: { outcome: 'imported' | 'existing' | 'rejected' | 'unconfirmed' | 'not_attempted'; id?: string; reason?: string }[]
       }>,
     // Vector memory
-    vectorSemantic: (store?: string) => fetch('/api/memory/semantic' + memoryStoreQuery(store)).then(j),
+    vectorSemantic: (store?: string) => jfetch('/api/memory/semantic' + memoryStoreQuery(store)).then(j),
     vectorSemanticWrite: (key: string, value: unknown, store?: string) => put('/api/memory/semantic' + memoryStoreQuery(store), { key, value, source: 'user_explicit' }).then(j),
     vectorSemanticDelete: (key: string, store?: string) => del('/api/memory/semantic/' + encodeURIComponent(key) + memoryStoreQuery(store)),
-    vectorEpisodic: (limit = 50, offset = 0, tags?: string, store?: string) => fetch('/api/memory/episodic?limit=' + limit + '&offset=' + offset + (tags ? '&tags=' + encodeURIComponent(tags) : '') + memoryStoreQuery(store, '&')).then(j),
-    vectorEpisodicSearch: (q: string, tags?: string, store?: string) => fetch('/api/memory/episodic/search?q=' + encodeURIComponent(q) + (tags ? '&tags=' + encodeURIComponent(tags) : '') + memoryStoreQuery(store, '&')).then(j),
+    vectorEpisodic: (limit = 50, offset = 0, tags?: string, store?: string) => jfetch('/api/memory/episodic?limit=' + limit + '&offset=' + offset + (tags ? '&tags=' + encodeURIComponent(tags) : '') + memoryStoreQuery(store, '&')).then(j),
+    vectorEpisodicSearch: (q: string, tags?: string, store?: string) => jfetch('/api/memory/episodic/search?q=' + encodeURIComponent(q) + (tags ? '&tags=' + encodeURIComponent(tags) : '') + memoryStoreQuery(store, '&')).then(j),
     vectorEpisodicDelete: (id: string, store?: string) => del('/api/memory/episodic/' + encodeURIComponent(id) + memoryStoreQuery(store)),
-    vectorStats: (store?: string) => fetch('/api/memory/stats' + memoryStoreQuery(store)).then(j),
-    vectorEvents: (limit = 50, offset = 0, store?: string) => fetch('/api/memory/events?limit=' + limit + '&offset=' + offset + memoryStoreQuery(store, '&')).then(j),
-    vectorEmbeddingStatus: () => fetch('/api/memory/embedding-status').then(j),
+    vectorStats: (store?: string) => jfetch('/api/memory/stats' + memoryStoreQuery(store)).then(j),
+    vectorEvents: (limit = 50, offset = 0, store?: string) => jfetch('/api/memory/events?limit=' + limit + '&offset=' + offset + memoryStoreQuery(store, '&')).then(j),
+    vectorEmbeddingStatus: () => jfetch('/api/memory/embedding-status').then(j),
     vectorEnableEmbeddings: () => post('/api/memory/enable-embeddings').then(j),
     vectorValidateEmbedModel: (path: string) =>
       post('/api/memory/embedding-model', { path, validate_only: true }).then(j),
@@ -190,14 +190,14 @@ export function createMemoryEndpoints({ get, post, put, del, j }: ClientTranspor
       post('/api/memory/embedding-model', { path }).then(j),
     vectorDisableEmbeddings: () => post('/api/memory/disable-embeddings').then(j),
     vectorImport: (data: object) => post('/api/memory/import', data).then(j),
-    vectorContextPreview: (query?: string) => fetch('/api/memory/context-preview' + (query ? '?q=' + encodeURIComponent(query) : '')).then(j),
-    memoryGraph: () => fetch('/api/memory/graph').then(j),
+    vectorContextPreview: (query?: string) => jfetch('/api/memory/context-preview' + (query ? '?q=' + encodeURIComponent(query) : '')).then(j),
+    memoryGraph: () => jfetch('/api/memory/graph').then(j),
     consolidateMemory: (key: string, includeHistory: boolean) => post('/api/memory/consolidate', { key, include_history: includeHistory }).then(j),
   }
 
   const lessons = {
     // Lessons
-    lessons: () => fetch('/api/lessons').then(j),
+    lessons: () => jfetch('/api/lessons').then(j),
     createLesson: (rule: string, category: string) =>
       post('/api/lessons', { rule, category }).then(j) as Promise<{
         ok: boolean

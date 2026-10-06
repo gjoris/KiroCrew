@@ -260,6 +260,60 @@ export function recordError(input: {
   return report
 }
 
+/**
+ * Per-endpoint burst cap for transport REJECTIONS (a `fetch` that never produced
+ * a `Response`), so recording them cannot wipe the journal.
+ *
+ * `recordError` is called once per answered failure, which is self-limiting. A
+ * rejection is not: while the gateway is unreachable, every polling query across
+ * ~190 call sites rejects on each tick, and left uncapped a few offline seconds
+ * would evict all 20 real reports (`MAX_JOURNAL`) and fill the ring with
+ * identical "Failed to fetch" lines — losing the very context this journal
+ * exists to keep. The cap records the FIRST rejection for an endpoint, then
+ * suppresses repeats for that endpoint for a cooldown window; a different
+ * endpoint still records on its own first miss, so a true outage leaves one
+ * entry per affected endpoint rather than one surface's retries drowning them.
+ */
+export const TRANSPORT_REJECTION_COOLDOWN_MS = 10_000
+const _rejectionSeenAt = new Map<string, number>()
+
+/**
+ * Record a transport-layer rejection — a `fetch` that rejected before any HTTP
+ * `Response` existed (a network drop, a `withDeadline` `TimeoutError`). Returns
+ * the stored report, or `undefined` when the per-endpoint burst cap suppressed
+ * it. `status` is deliberately never set: no response arrived, and a synthetic
+ * one would send a reader to audit a server that never spoke.
+ *
+ * Caller is responsible for excluding deliberate aborts (`AbortError`): an
+ * unmount or a superseded react-query key cancels on purpose and is not a
+ * failure a user can act on.
+ */
+export function recordTransportRejection(input: {
+  message: string
+  endpoint?: string
+  method?: string
+  code?: string
+}): ErrorReport | undefined {
+  // Key the cap on the endpoint when there is one; a rejection with no endpoint
+  // (unparseable URL) shares a single bucket rather than going uncapped.
+  const key = input.endpoint ?? '<no-endpoint>'
+  const now = Date.now()
+  const last = _rejectionSeenAt.get(key)
+  if (last !== undefined && now - last < TRANSPORT_REJECTION_COOLDOWN_MS) return undefined
+  _rejectionSeenAt.set(key, now)
+  // The HTTP method has no field of its own on ErrorReport, so it rides in
+  // `detail` alongside a marker that names the layer that broke — the request
+  // never reached the server, so there are no server logs to correlate with.
+  const detail = `${input.method ? input.method + ' ' : ''}${input.endpoint ?? ''} — network/transport failure, no HTTP response`
+  return recordError({
+    source: 'api',
+    message: input.message,
+    endpoint: input.endpoint,
+    code: input.code,
+    detail,
+  })
+}
+
 /** Newest-first snapshot of the journal. */
 export function recentErrors(): ErrorReport[] {
   return _journal
@@ -331,6 +385,7 @@ export function __resetErrorJournalForTests(): void {
   _journal = []
   _seq = 0
   _listeners.clear()
+  _rejectionSeenAt.clear()
 }
 
 // `buildErrorPrompt` deliberately lives in `errorReport.prompt.ts` (the

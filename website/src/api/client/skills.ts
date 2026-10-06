@@ -25,12 +25,12 @@ export interface SkillScriptValidation {
   report: Record<string, string[]>
 }
 
-export function createSkillsEndpoints({ get, post, put, del, j }: ClientTransport) {
+export function createSkillsEndpoints({ get, post, put, del, j, jfetch }: ClientTransport) {
   const library = {
     // Prompts (Agent SOPs)
-    prompts: () => fetch('/api/prompts').then(j),
+    prompts: () => jfetch('/api/prompts').then(j),
     promptDetail: (name: string, scope?: 'global' | 'local') =>
-      fetch('/api/prompts/' + name.split('/').map(encodeURIComponent).join('/')
+      jfetch('/api/prompts/' + name.split('/').map(encodeURIComponent).join('/')
         + (scope ? '?scope=' + scope : '')).then(j),
     createPrompt: (name: string, content: string, scope: 'global' | 'local') =>
       post('/api/prompts', { name, content, scope }).then(j),
@@ -70,13 +70,13 @@ export function createSkillsEndpoints({ get, post, put, del, j }: ClientTranspor
     revokeSkillTrust: (path?: string, sessionKey?: string) =>
       del('/api/skills/-/trust' + (path ? '?path=' + encodeURIComponent(path) : ''),
           undefined, sessionKey).then(j),
-    skill: (name: string) => fetch('/api/skills/' + name.split('/').map(encodeURIComponent).join('/')).then(j),
+    skill: (name: string) => jfetch('/api/skills/' + name.split('/').map(encodeURIComponent).join('/')).then(j),
     /** List the file tree under a skill's directory.  The ``/-/`` separator
      *  disambiguates from a nested skill whose last segment is ``tree``. */
-    skillTree: (name: string) => fetch('/api/skills/' + name.split('/').map(encodeURIComponent).join('/') + '/-/tree').then(j),
+    skillTree: (name: string) => jfetch('/api/skills/' + name.split('/').map(encodeURIComponent).join('/') + '/-/tree').then(j),
     /** Read a single file inside a skill's directory by relative path. */
     skillFile: (name: string, relPath: string) =>
-      fetch('/api/skills/' + name.split('/').map(encodeURIComponent).join('/') +
+      jfetch('/api/skills/' + name.split('/').map(encodeURIComponent).join('/') +
             '/-/file?path=' + encodeURIComponent(relPath)).then(j),
     createSkill: (name: string, content: string) => post('/api/skills', { name, content }).then(j),
     updateSkill: (name: string, content: string) => put('/api/skills/' + name.split('/').map(encodeURIComponent).join('/'), { content }).then(j),
@@ -85,10 +85,10 @@ export function createSkillsEndpoints({ get, post, put, del, j }: ClientTranspor
 
   const curation = {
     // Auto-skill pending queue + lifecycle pin
-    skillsPending: () => fetch('/api/skills/-/pending').then(j),
+    skillsPending: () => jfetch('/api/skills/-/pending').then(j),
     /** Detail payload carries `script_validation` (`SkillScriptValidation`) so the
      *  review card can warn BEFORE the click that Approve cannot succeed as-is. */
-    skillPendingDetail: (slug: string) => fetch('/api/skills/-/pending/' + encodeURIComponent(slug)).then(j),
+    skillPendingDetail: (slug: string) => jfetch('/api/skills/-/pending/' + encodeURIComponent(slug)).then(j),
     /** Throws ApiError on refusal: 404 `pending_skill_not_found`, 409
      *  `live_skill_exists`, 422 `script_validation_failed` (body carries a
      *  `report` of `{file: [findings]}`), 409 `pending_approval_refused`. */

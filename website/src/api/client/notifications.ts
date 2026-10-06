@@ -5,16 +5,16 @@
 
 import type { ClientTransport } from './transport'
 
-export function createNotificationsEndpoints({ post, put, del, j }: ClientTransport) {
+export function createNotificationsEndpoints({ post, put, del, j, jfetch }: ClientTransport) {
   const inbox = {
     // Notifications
-    notifications: () => fetch('/api/notifications').then(j),
+    notifications: () => jfetch('/api/notifications').then(j),
     deleteNotification: (ts: string) => del('/api/notifications', { ts }).then(j),
     clearNotifications: () => post('/api/notifications/clear').then(j),
     ackNotification: (ts: string) => post('/api/notifications/ack', { ts }).then(j),
     unackNotification: (ts: string) => post('/api/notifications/unack', { ts }).then(j),
     ackAllNotifications: () => post('/api/notifications/ack-all').then(j),
-    notificationChannels: () => fetch('/api/notifications/channels').then(j),
+    notificationChannels: () => jfetch('/api/notifications/channels').then(j),
     updateNotificationChannelSettings: (channel: string, settings: { muted?: boolean; priority?: string | null }) =>
       put('/api/notifications/channels/settings', { channel, ...settings }).then(j),
   }

@@ -67,7 +67,7 @@ export interface FileMenuContext {
   root?: string
 }
 
-export function createAppsEndpoints({ get, post, put, del, j, sessionKeyHeader: _sk, checkSessionExpired, removeAuthBanner }: ClientTransport) {
+export function createAppsEndpoints({ get, post, put, del, j, jfetch, sessionKeyHeader: _sk, checkSessionExpired, removeAuthBanner }: ClientTransport) {
   const platform = {
     // --- Apps ---
     // Installed-app payloads are normalized HERE rather than in a queryFn. The
@@ -75,9 +75,9 @@ export function createAppsEndpoints({ get, post, put, del, j, sessionKeyHeader: 
     // `useQuery`; `/api/apps` has four (the Apps page, the left rail, the command
     // palette, the migration check), and normalizing per consumer is how the
     // fourth one gets forgotten. This is the boundary all four share.
-    listApps: () => fetch('/api/apps').then(j).then(normalizeInstalledApps),
-    getApp: (name: string) => fetch('/api/apps/' + encodeURIComponent(name)).then(j).then(normalizeInstalledApp),
-    getAppManifest: (name: string) => fetch('/api/apps/' + encodeURIComponent(name) + '/manifest').then(j),
+    listApps: () => jfetch('/api/apps').then(j).then(normalizeInstalledApps),
+    getApp: (name: string) => jfetch('/api/apps/' + encodeURIComponent(name)).then(j).then(normalizeInstalledApp),
+    getAppManifest: (name: string) => jfetch('/api/apps/' + encodeURIComponent(name) + '/manifest').then(j),
     installApp: (source: string) => post('/api/apps/install', { source }).then(j),
     enableApp: (name: string, sessionApprovalConsent = false) => post('/api/apps/' + encodeURIComponent(name) + '/enable', { sessionApprovalConsent }).then(j),
     disableApp: (name: string) => post('/api/apps/' + encodeURIComponent(name) + '/disable').then(j),
@@ -89,7 +89,7 @@ export function createAppsEndpoints({ get, post, put, del, j, sessionKeyHeader: 
         ...(keepSpecific?.length ? { keep_specific: keepSpecific } : {}),
       }).then(j),
     uninstallPreview: (name: string) =>
-      fetch('/api/apps/' + encodeURIComponent(name) + '/uninstall/preview').then(j) as Promise<{
+      jfetch('/api/apps/' + encodeURIComponent(name) + '/uninstall/preview').then(j) as Promise<{
         app: string
         resources: { agents: string[]; skills: string[]; crons: string[] }
         dependencies: {
@@ -104,8 +104,8 @@ export function createAppsEndpoints({ get, post, put, del, j, sessionKeyHeader: 
     // narrows it to its own local RegistryApp shape at the call site. Typing it as
     // unknown[] here would break those structural assignments across files.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    listRegistry: () => fetch('/api/apps/registry').then(j) as Promise<{ apps: any[]; serverPlatform: { os: string; arch: string }; categoryOrder?: string[]; editorialSections?: unknown[] }>,
-    listRegistries: () => fetch('/api/apps/registries').then(j) as Promise<{ registries: ExternalRegistryRow[]; pinned?: ExternalRegistryRow[] }>,
+    listRegistry: () => jfetch('/api/apps/registry').then(j) as Promise<{ apps: any[]; serverPlatform: { os: string; arch: string }; categoryOrder?: string[]; editorialSections?: unknown[] }>,
+    listRegistries: () => jfetch('/api/apps/registries').then(j) as Promise<{ registries: ExternalRegistryRow[]; pinned?: ExternalRegistryRow[] }>,
     updateRegistries: (registries: { name: string; repo: string; branch: string; trust?: string }[]) => put('/api/apps/registries', { registries }).then(j) as Promise<{ ok: boolean; registries: ExternalRegistryRow[]; newlyTrustedHosts: string[] }>,
     // Drops the server's on-disk caches of the published documents (catalog /
     // category order / editorial) so the NEXT listRegistry() is rebuilt from
@@ -126,7 +126,7 @@ export function createAppsEndpoints({ get, post, put, del, j, sessionKeyHeader: 
       onLog: (line: string) => void,
       signal?: AbortSignal,
     ): Promise<InstallStreamResult> => {
-      const res = await fetch('/api/apps/registry/install-stream', {
+      const res = await jfetch('/api/apps/registry/install-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ..._sk },
         body: JSON.stringify({ name }),

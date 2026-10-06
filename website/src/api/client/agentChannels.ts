@@ -7,12 +7,12 @@
 
 import type { ClientTransport } from './transport'
 
-export function createAgentChannelsEndpoints({ post, del, patch, j }: ClientTransport) {
+export function createAgentChannelsEndpoints({ post, del, patch, j, jfetch }: ClientTransport) {
   const channels = {
     // Channels
-    channelsList: () => fetch('/api/channels').then(j),
-    channelPresets: () => fetch('/api/channels/presets').then(j),
-    channelGet: (id: string) => fetch('/api/channels/' + encodeURIComponent(id)).then(j),
+    channelsList: () => jfetch('/api/channels').then(j),
+    channelPresets: () => jfetch('/api/channels/presets').then(j),
+    channelGet: (id: string) => jfetch('/api/channels/' + encodeURIComponent(id)).then(j),
     channelCreate: (topic: string, agents: object[]) => post('/api/channels', { topic, agents }).then(j),
     channelClose: (id: string) => del('/api/channels/' + encodeURIComponent(id)).then(j),
     channelPost: (id: string, content: string, mention?: string | string[], thread_id?: string) => post('/api/channels/' + encodeURIComponent(id) + '/messages', { content, mention, thread_id }).then(j),

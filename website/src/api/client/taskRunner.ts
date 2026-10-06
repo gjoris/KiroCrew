@@ -20,23 +20,23 @@ export interface PlanStepInput {
   [key: string]: unknown
 }
 
-export function createTaskRunnerEndpoints({ get, post, put, del, j }: ClientTransport) {
+export function createTaskRunnerEndpoints({ get, post, put, del, j, jfetch }: ClientTransport) {
   const runs = {
     // Task runner
-    taskRunnerStatus: () => fetch('/api/taskrunner').then(j),
+    taskRunnerStatus: () => jfetch('/api/taskrunner').then(j),
     startTaskRunner: (spec: string, agent?: string, workspaceDir?: string) => post('/api/taskrunner', { spec, agent: agent || '', workspace_dir: workspaceDir || '' }).then(j),
     cancelTaskRunner: (taskId?: string) => post('/api/taskrunner/cancel', taskId ? { task_id: taskId } : undefined).then(j),
     pauseTaskRun: (taskId: string) => post('/api/taskrunner/' + encodeURIComponent(taskId) + '/pause').then(j),
     deleteTaskRun: (taskId: string) => del('/api/taskrunner/' + encodeURIComponent(taskId)).then(j),
     retryTaskRun: (taskId: string, fromStep: number) => post('/api/taskrunner/' + encodeURIComponent(taskId) + '/retry', { from_step: fromStep }).then(j),
-    renameTaskRun: (taskId: string, name: string) => fetch('/api/taskrunner/' + encodeURIComponent(taskId) + '/name', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then(j),
-    updateTask: (taskId: string, index: number, updates: { title?: string; description?: string; depends_on?: number[]; requires_approval?: boolean; force_approval?: boolean }) => fetch('/api/taskrunner/' + encodeURIComponent(taskId) + '/tasks/' + index, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) }).then(j),
+    renameTaskRun: (taskId: string, name: string) => jfetch('/api/taskrunner/' + encodeURIComponent(taskId) + '/name', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then(j),
+    updateTask: (taskId: string, index: number, updates: { title?: string; description?: string; depends_on?: number[]; requires_approval?: boolean; force_approval?: boolean }) => jfetch('/api/taskrunner/' + encodeURIComponent(taskId) + '/tasks/' + index, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) }).then(j),
     taskRunToChat: (taskId: string) => post('/api/taskrunner/' + encodeURIComponent(taskId) + '/to-chat').then(j),
   }
 
   const plans = {
     refineTaskInput: (input: string) => post('/api/taskrunner/refine', { input }).then(j),
-    refineStatus: () => fetch('/api/taskrunner/refine').then(j),
+    refineStatus: () => jfetch('/api/taskrunner/refine').then(j),
     refineCancel: () => post('/api/taskrunner/refine/cancel').then(j),
     planTask: (input: string, source: string, spec?: string, agent?: string, workspaceDir?: string) =>
       post('/api/taskrunner/plan', { input, source, spec: spec || '', agent: agent || '', workspace_dir: workspaceDir || '' }).then(j),
@@ -48,7 +48,7 @@ export function createTaskRunnerEndpoints({ get, post, put, del, j }: ClientTran
     planFromChat: (steps: PlanStepInput[], taskId?: string, originalInput?: string) =>
       post('/api/taskrunner/from-chat', { steps, task_id: taskId || '', original_input: originalInput || '' }).then(j),
     planContext: (taskId: string) =>
-      fetch('/api/taskrunner/' + encodeURIComponent(taskId) + '/plan-context').then(j),
+      jfetch('/api/taskrunner/' + encodeURIComponent(taskId) + '/plan-context').then(j),
     /** Download the run's plan as a YAML workflow (re-importable via the "From YAML" tab).
      *  Fetches with the auth header, then triggers a browser download honoring the
      *  server's sanitized Content-Disposition filename. */
