@@ -436,6 +436,29 @@ class TestInitializeWatcher:
         await task
         assert permit.outcome == adm.OUTCOME_SUCCESS
 
+    @pytest.mark.asyncio
+    async def test_a_success_near_its_own_deadline_counts_as_slow(self) -> None:
+        """Slow is relative to each init's own timeout, and only successes count."""
+        clock = [100.0]
+        gate = adm.SpawnGate(4, clock=lambda: clock[0])
+        for took, timeout in ((7.9, 10.0), (8.0, 10.0), (20.0, 30.0), (25.0, 30.0)):
+            permit = await gate.acquire(label="p")
+            done = asyncio.Event()
+            clock[0] += took
+            done.set()
+            await gate.watch_initialize(
+                permit,
+                init_done=done,
+                init_state=lambda: "ready",
+                process_exited=AsyncMock(),
+                timeout=timeout,
+            )
+            assert permit.outcome == adm.OUTCOME_SUCCESS
+        # 8.0/10 and 25/30 reach 80% of their own deadline; 7.9/10 and 20/30 do not.
+        assert gate.snapshot()["slow_inits"] == 2
+        clock[0] += adm.SLOW_INIT_WINDOW_SECS + 1
+        assert gate.snapshot()["slow_inits"] == 0
+
 
 class TestAdmissionBundle:
     @pytest.mark.asyncio

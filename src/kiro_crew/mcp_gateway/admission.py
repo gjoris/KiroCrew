@@ -99,6 +99,15 @@ _OUTCOMES = frozenset({OUTCOME_SUCCESS, OUTCOME_FAILURE, OUTCOME_NEUTRAL})
 #: deadline and sets the done event; this only has to outlast that.
 _INIT_WATCH_GRACE_SECS = 1.0
 
+#: A successful initialize that took at least this fraction of its own
+#: deadline counts as slow: it was close to failing. Relative, so a server an
+#: operator gave a longer ``initialize_timeout_secs`` is judged against that.
+SLOW_INIT_FRACTION = 0.8
+
+#: Window over which slow inits are counted for the snapshot's ``slow_inits``,
+#: the gate's own latency evidence for the adaptive controller.
+SLOW_INIT_WINDOW_SECS = 60.0
+
 
 class SpawnGateClosed(RuntimeError):
     """The gate was closed for drain; nothing will be admitted again."""
@@ -221,6 +230,8 @@ class SpawnGate:
         self._granted = 0
         self._timeouts = 0
         self._cancelled = 0
+        # Settle times of slow successful inits, one window deep.
+        self._slow_inits: deque[float] = deque()
 
     # -- capacity ------------------------------------------------------------
 
@@ -379,6 +390,13 @@ class SpawnGate:
             except Exception:  # pragma: no cover -- a controller bug must not leak a permit
                 logger.exception("spawn gate on_settle hook failed")
 
+    def slow_init_count(self) -> int:
+        """Slow successful inits settled in the last ``SLOW_INIT_WINDOW_SECS``."""
+        cutoff = self._clock() - SLOW_INIT_WINDOW_SECS
+        while self._slow_inits and self._slow_inits[0] < cutoff:
+            self._slow_inits.popleft()
+        return len(self._slow_inits)
+
     # -- initialize watcher --------------------------------------------------
 
     def watch_initialize(
@@ -433,6 +451,9 @@ class SpawnGate:
             state = init_state()
             if done and state == "ready":
                 permit.settle(OUTCOME_SUCCESS)
+                now = self._clock()
+                if now - permit.granted_at >= SLOW_INIT_FRACTION * float(timeout):
+                    self._slow_inits.append(now)
                 return
             if done and state == "failed":
                 permit.settle(OUTCOME_FAILURE)
@@ -482,6 +503,7 @@ class SpawnGate:
             "timeouts": self._timeouts,
             "cancelled": self._cancelled,
             "outcomes": dict(self._outcomes),
+            "slow_inits": self.slow_init_count(),
             "closed": self._closed,
         }
 
