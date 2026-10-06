@@ -168,6 +168,49 @@ class TestSanitizeString:
         # Beside real script they survive.
         assert sanitize_string("\u0645\u200c\u062e") == "\u0645\u200c\u062e"
 
+    def test_composes_across_stripped_format_char(self):
+        assert sanitize_string("cafe\u00ad\u0301") == "caf\u00e9"
+
+    @pytest.mark.parametrize("hidden", ["\u00ad", "\ufeff", "\u200b", "\u202e"])
+    @pytest.mark.parametrize(
+        "base,mark",
+        [("e", "\u0301"), ("a", "\u0308"), ("n", "\u0303"), ("c", "\u0327")],
+    )
+    def test_idempotent_with_hidden_char_before_combining_mark(self, hidden, base, mark):
+        once = sanitize_string(f"x{base}{hidden}{mark}y")
+        assert sanitize_string(once) == once
+        assert once == normalize_unicode(f"x{base}{mark}y")
+
+    @pytest.mark.parametrize("ascii_after_nfc", ["\u212a", "\u037e", "\u1fef"])
+    def test_shaping_mark_dropped_when_nfc_makes_neighbour_ascii(self, ascii_after_nfc):
+        once = sanitize_string(f"AKIA{ascii_after_nfc}\u200dIOSFODNN7EXAMPLE")
+        assert "\u200d" not in once
+        assert sanitize_string(once) == once
+
+    @pytest.mark.parametrize("raw", ["x\u200d\u00a0", "\u00a0\u200dAKIA", "AKIA\u200d\u3000"])
+    def test_shaping_mark_dropped_when_edge_trim_leaves_ascii_neighbour(self, raw):
+        once = sanitize_string(raw)
+        assert "\u200d" not in once
+        assert sanitize_string(once) == once
+
+    def test_shaping_mark_kept_beside_non_ascii_edge(self):
+        assert sanitize_string("\u0645\u200c \u00a0") == "\u0645\u200c"
+        assert sanitize_string("\u3000\u200d\U0001f468") == "\u200d\U0001f468"
+
+    def test_edge_runs_need_one_strip_pass(self, monkeypatch):
+        import kiro_crew.validation as validation
+
+        calls = []
+        real = validation.strip_hidden_unicode
+
+        def counting(text):
+            calls.append(len(text))
+            return real(text)
+
+        monkeypatch.setattr(validation, "strip_hidden_unicode", counting)
+        assert sanitize_string("a" + " \u200d\u00a0" * 2000) == "a"
+        assert len(calls) == 1
+
 
 class TestSanitizeJsonValues:
     def test_strips_hidden_chars_from_nested_values_and_keys(self):

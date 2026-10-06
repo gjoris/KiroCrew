@@ -1096,14 +1096,7 @@ def strip_hidden_unicode(text: str) -> str:
     # Testing against the raw input let a stripped character vouch for a mark
     # (``AKIA<ZWSP><ZWJ>IOSF…``: the ZWSP is removed, but the ZWJ saw it as a
     # non-ASCII neighbour and stayed, leaving the credential unredactable).
-    kept: list[str] = []
-    for ch in text:
-        if (
-            ch in _ALLOWED_CONTROL
-            or ch in _ALLOWED_FORMAT
-            or unicodedata.category(ch) not in _HIDDEN_CATEGORIES
-        ):
-            kept.append(ch)
+    kept = _drop_hidden_except_marks(text)
     # Pass 2: a shaping mark survives only if the nearest surviving
     # NON-MARK character on one side is non-ASCII. Skipping over adjacent
     # marks is what stops a run of them from vouching for each other —
@@ -1128,16 +1121,60 @@ def strip_hidden_unicode(text: str) -> str:
     return "".join(out)
 
 
+def _drop_hidden_except_marks(text: str) -> list[str]:
+    """Drop every hidden character except the shaping marks in ``_ALLOWED_FORMAT``."""
+    return [
+        ch
+        for ch in text
+        if ch in _ALLOWED_CONTROL
+        or ch in _ALLOWED_FORMAT
+        or unicodedata.category(ch) not in _HIDDEN_CATEGORIES
+    ]
+
+
 def normalize_unicode(text: str) -> str:
     """NFC-normalize Unicode text to canonical form."""
     return unicodedata.normalize("NFC", text)
 
 
 def sanitize_string(text: str) -> str:
-    """Full sanitization pipeline: normalize → strip hidden chars → strip edges."""
-    text = normalize_unicode(text)
-    text = strip_hidden_unicode(text)
-    return text.strip()
+    """Full sanitization pipeline: drop hidden → normalize → strip hidden → trim edges.
+
+    Dropping hidden characters first lets combining marks compose across a
+    removed character. The shaping marks are judged only after NFC, because
+    NFC changes their neighbours (``e`` + U+0301 becomes non-ASCII ``é``, and
+    U+212A KELVIN SIGN becomes ASCII ``K``).
+    """
+    text = normalize_unicode("".join(_drop_hidden_except_marks(text)))
+    return _trim_edges(strip_hidden_unicode(text))
+
+
+def _trim_edges(text: str) -> str:
+    """Trim edge whitespace and the shaping marks it would strand, in one pass.
+
+    A shaping mark in an edge run survives only when it touches the kept text
+    and that text's edge character is non-ASCII. Trimming whitespace alone can
+    leave a mark beside ASCII only, which the next ``sanitize_string`` call
+    would then remove.
+    """
+
+    def trimmable(ch: str) -> bool:
+        return ch.isspace() or ch in _ALLOWED_FORMAT
+
+    start, end = 0, len(text)
+    while start < end and trimmable(text[start]):
+        start += 1
+    while end > start and trimmable(text[end - 1]):
+        end -= 1
+    if start == end:
+        return ""
+    if not text[start].isascii():
+        while start > 0 and text[start - 1] in _ALLOWED_FORMAT:
+            start -= 1
+    if not text[end - 1].isascii():
+        while end < len(text) and text[end] in _ALLOWED_FORMAT:
+            end += 1
+    return text[start:end]
 
 
 def sanitize_json_values(value: Any) -> Any:
