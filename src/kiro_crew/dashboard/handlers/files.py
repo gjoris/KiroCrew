@@ -267,7 +267,9 @@ from kiro_crew.sandbox import (  # noqa: F401
     wrap_argv,
 )
 from kiro_crew.security import (  # noqa: F401
+    _STREAM_HOLDBACK_JWT_MAX,
     BINARY_MIME_ALLOWLIST,
+    StreamRedactor,
     is_sensitive_path,
     is_sensitive_resolved_path,
     path_contains_sensitive,
@@ -2085,7 +2087,7 @@ async def api_file_read(request: web.Request) -> web.Response:
         outcome = await _run_path_probe(
             _read_request_path,
             raw_path,
-            0 if request.method == "HEAD" else read_cap + 1,
+            0 if request.method == "HEAD" else read_cap + _STREAM_HOLDBACK_JWT_MAX,
             transfer=request.method != "HEAD",
         )
     except _PathProbeBusy:
@@ -2144,7 +2146,6 @@ async def api_file_read(request: web.Request) -> web.Response:
             )
         content = outcome.content
         truncated = len(content) > read_cap
-        content = content[:read_cap]
         # OWNER-VIEW seam: when the requester IS the dashboard owner, the owner's
         # credential-redaction switch applies to this read of their own disk
         # (``security.redaction_switch``). A non-owner dashboard user (a Slack
@@ -2152,11 +2153,28 @@ async def api_file_read(request: web.Request) -> web.Response:
         # other opener in this module is ``api_file_diff``, which feeds the SAME
         # panel the ``original`` this buffer is compared against; the outbox
         # flagged-file check and the upload gates keep the unconditional ``redact``.
-        as_written = content
-        if await _owner_view_bypasses_credential_pass(request):
-            content = redact_owner_view_via_context(content)
-        else:
-            content = redact(content)
+        owner_view = await _owner_view_bypasses_credential_pass(request)
+
+        def redact_fn(text: str) -> str:
+            return redact_owner_view_via_context(text) if owner_view else redact(text)
+
+        # The read runs past the cap by the redactor's own longest-token bound,
+        # so a credential straddling the cap is matched whole there. The body
+        # keeps only what redacting the capped text and redacting the whole read
+        # agree on: it holds no prefix the capped pass alone left unmatched, and
+        # no raw text from past the cap that the shorter redacted output exposes.
+        # A read that stops short of its bound holds the whole file; a full one
+        # goes through the streaming redactor, which withholds a token the read
+        # itself cut off before it could match.
+        as_written = content[:read_cap]
+        content = redact_fn(as_written)
+        if truncated:
+            whole = outcome.content
+            if len(whole) < read_cap + _STREAM_HOLDBACK_JWT_MAX:
+                whole = redact_fn(whole)
+            else:
+                whole = StreamRedactor(redactor=redact_fn).feed(whole)
+            content = os.path.commonprefix([content, whole])
         _sel().log_tool_invocation(
             session_key="dashboard", tool_name="file_read", outcome="success", resources=path
         )
@@ -2170,7 +2188,7 @@ async def api_file_read(request: web.Request) -> web.Response:
         headers = {}
         if truncated:
             headers["X-Truncated"] = "true"
-        if content != as_written:
+        if not as_written.startswith(content):
             headers["X-Redacted"] = "true"
         if outcome.lossy:
             headers["X-Lossy-Decode"] = "true"
