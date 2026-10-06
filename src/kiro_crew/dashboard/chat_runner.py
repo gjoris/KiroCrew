@@ -174,11 +174,17 @@ from kiro_crew.dashboard.chat_turn.directives import (  # noqa: F401
 from kiro_crew.dashboard.chat_turn.file_changes import (  # noqa: F401
     _PATH_TRUNCATION_MARKER,
     _apply_turn_snapshot_budget,
+    _apply_write_outcome,
+    _bind_pending_str_replace,
+    _classify_str_replace_before,
     _line_change_input,
     _note_reply_row,
-    _reconstruct_str_replace_before,
+    _pending_str_replace_payload,
     _record_turn_snapshot,
+    _resolve_pending_str_replace,
+    _retire_write_tool_outcome,
     _safe_read_snapshot,
+    _settle_pending_str_replace_outcome,
     _Snapshot,
     _snapshot_write_target,
     _truncate_snapshot,
@@ -1941,16 +1947,22 @@ def _cap_redacted(text: str, limit: int, marker: str) -> tuple[str, bool]:
 
 
 def _flush_file_changes(
-    slot: "_ChatSlot", turn_boundary: int = 0, turn_start_mid: str | None = None
+    slot: "_ChatSlot",
+    turn_boundary: int = 0,
+    turn_start_mid: str | None = None,
+    shell_ran: bool = False,
 ) -> None:
     """Attach accumulated file changes to this turn's last assistant message.
 
-    Dedups by path (first before, last after), reads the AFTER content from
-    disk, and writes the list to message meta as ``file_changes``. Files the
-    turn budget dropped are counted in ``file_changes_omitted_files``, a plain
-    int present only when it is non-zero. Called on
-    every exit path (success / cancel / error) so users always see what was
-    modified, even on aborted turns.
+    Dedups by canonical path (first before, last after), reads the AFTER content
+    from disk, and settles a ``pending_str_replace`` snapshot only when every
+    snapshot for that path carries the same known tool call id AND no shell
+    command ran this turn (``shell_ran``). Writes the list to message meta as
+    ``file_changes``. Files the turn budget dropped are counted in
+    ``file_changes_omitted_files``, a plain int present only when it is
+    non-zero. Called on every exit path (success / cancel / error) so users
+    always see what was modified, even on aborted turns. Resets the per-turn
+    write-outcome map on every path, including a turn that wrote nothing.
 
     Only rows appended by this turn are scanned (see ``_turn_rows`` for the
     two ways the turn's start is identified), so a turn that changed files but
@@ -1962,7 +1974,20 @@ def _flush_file_changes(
     envelope) is not this turn's reply even when it is the newest assistant row
     in the turn. A slot that tracks no identities (a test double without the
     list) keeps the position rule.
+
+    ``shell_ran`` is the GPT-review remedy for the one writer the flush cannot
+    observe: deferred resolution watches write TOOLS only, so a shell command
+    that restores the ambiguous file in the same turn (``git checkout -- F``, a
+    build step) is invisible — the flush would see one write-tool writer and
+    settle a before that the shell has since overwritten. When any shell call
+    ran this turn an unobserved writer may have touched the file, so no pending
+    snapshot is resolved and the fragment fallback stands.
     """
+    # The outcome map is per-turn state: reset it before the early return below,
+    # so a turn with no writes cannot carry tool call ids into the next one.
+    # Binding and settling both read it before the flush, never inside it.
+    if isinstance(getattr(slot, "_write_tool_outcomes", None), dict):
+        slot._write_tool_outcomes = {}
     # Defensive: only proceed when a real, non-empty list is present. Tests
     # using MagicMock slots leave _file_changes as a MagicMock attribute
     # (always truthy), so an isinstance check is needed in addition to the
@@ -1974,30 +1999,54 @@ def _flush_file_changes(
     # Dedup: keep first before for each path (truest "before") since a file
     # may be modified multiple times in one turn.
     deduped: dict[str, dict[str, Any]] = {}
+    pending_by_path: dict[str, dict[str, Any]] = {}
+    writers_by_path: dict[str, set[str]] = {}
     for write_order, fc in enumerate(slot._file_changes):
         p = fc["path"]
-        if p not in deduped:
-            deduped[p] = {
+        # ``/tmp/f`` and ``/tmp/./f`` share one bucket: the key is the canonical
+        # path ``_snapshot_write_target`` computes off the event loop at snapshot
+        # time, so this loop resolves no path itself. Without one bucket a
+        # restoring write under the other spelling reads as a lone writer and
+        # settles a fabricated before.
+        key = fc.get("canonical_path") or p
+        # Snapshots carry the writer's ``_tcid_identity_key``. An unidentified
+        # snapshot ("") counts as its own writer: it cannot be attributed to
+        # the pending payload's tool call.
+        writers_by_path.setdefault(key, set()).add(str(fc.get("tool_call_id") or ""))
+        if key not in deduped:
+            deduped[key] = {
                 "path": p,
                 "before": fc["content"],
                 "after": "",
                 "_before_truncated": bool(fc.get("truncated", False)),
             }
+            if fc.get("pending_str_replace"):
+                pending_by_path[key] = fc["pending_str_replace"]
         # The accumulator moves a path's first snapshot to the tail on every
         # write, so its position carries last-write recency without extra rows.
         # Assigning on every occurrence also supports directly supplied repeats.
-        deduped[p]["_last_write"] = write_order
+        deduped[key]["_last_write"] = write_order
     # Read after-content once per path. Uses _safe_read_snapshot so sensitive
     # paths and unreadable files yield empty after rather than crashing or
     # leaking credentials.
-    for entry in deduped.values():
+    for key, entry in deduped.items():
+        before_truncated = entry.pop("_before_truncated")
         after = _safe_read_snapshot(entry["path"])
-        if after is None:
-            entry["after"] = ""
-            after = _Snapshot("", False)
-        else:
-            entry["after"] = after.content
-        if entry.pop("_before_truncated") or after.truncated:
+        entry["after"] = after.content if after is not None else ""
+        pending = pending_by_path.get(key)
+        writers = writers_by_path[key]
+        single_writer = len(writers) == 1 and "" not in writers
+        # The GPT-review remedy: a shell command restoring the file in the same
+        # turn is an unobserved writer the flush cannot see, so ANY shell call
+        # this turn disqualifies a deferred resolution — keep the fragment.
+        if pending is not None and after is not None and single_writer and not shell_ran:
+            resolved = _resolve_pending_str_replace(pending, after.content)
+            if resolved is not None:
+                # Already _MAX_SNAPSHOT-capped by _pending_str_replace_payload;
+                # re-truncating would append a second marker.
+                entry["before"] = resolved.content
+                before_truncated = resolved.truncated
+        if before_truncated or (after is not None and after.truncated):
             entry.update(truncated=True, snapshot_limit_chars=_MAX_SNAPSHOT)
     # Scrub exfil URLs and credentials from path/before/after BEFORE attaching
     # to message meta. _save_slot_to_history runs _redact_meta on persist, but
@@ -11762,6 +11811,11 @@ async def _run_chat(
                 # Broadcast for real-time visibility and persist
                 _tool_payload = _tool_call_ws_payload(event)
                 _tool_payload["slot"] = slot.key
+                # This frame opens a NEW call; an outcome or pending payload
+                # still held under its id came from an earlier call that reused
+                # it. Retired before the snapshot below, so the bind cannot
+                # consume a stale success and this call cannot settle it.
+                _retire_write_tool_outcome(slot, event.tool_call_id)
                 # Snapshot file BEFORE write tools execute. Accumulates per-turn,
                 # flushed to assistant message meta in _flush_file_changes on turn end.
                 # Prefer the in-band diff_old_text from the ACP content block
@@ -11775,6 +11829,17 @@ async def _run_chat(
                     diff_path=event.diff_path,
                 )
                 if _file_snapshot:
+                    _file_snapshot_key = _tcid_identity_key(event.tool_call_id)
+                    _bind_pending_str_replace(
+                        _file_snapshot,
+                        (
+                            event.tool_call_id
+                            if _file_snapshot_key in _tcid_first_source
+                            and _file_snapshot_key not in _tcid_collapsed
+                            else ""
+                        ),
+                        slot,
+                    )
                     _record_turn_snapshot(slot, _file_snapshot)
                 state.broadcast_ws(
                     "tool_call",
@@ -11992,6 +12057,17 @@ async def _run_chat(
                         diff_path=event.diff_path,
                     )
                     if _file_snapshot_upd:
+                        _file_snapshot_upd_key = _tcid_identity_key(event.tool_call_id)
+                        _bind_pending_str_replace(
+                            _file_snapshot_upd,
+                            (
+                                event.tool_call_id
+                                if _file_snapshot_upd_key in _tcid_first_source
+                                and _file_snapshot_upd_key not in _tcid_collapsed
+                                else ""
+                            ),
+                            slot,
+                        )
                         _record_turn_snapshot(slot, _file_snapshot_upd)
                     # Refresh the toolLog entry (sseToolActivity merges by id).
                     state.broadcast_ws(
@@ -12179,6 +12255,16 @@ async def _run_chat(
                         result=event.tool_output or "",
                         result_digest=event.tool_output_digest,
                         result_bytes=event.tool_output_bytes,
+                    )
+                    # Settle a deferred strReplace snapshot for this call: a
+                    # completed write confirms its before can be resolved against
+                    # the turn-end file, any other terminal outcome drops the
+                    # pending payload so the fragment stands. Keyed by the call's
+                    # identity, so an unidentified/collapsed id settles nothing.
+                    _settle_pending_str_replace_outcome(
+                        slot,
+                        event.tool_call_id if _tcid_identifies else "",
+                        completed=_tool_status == "completed",
                     )
                 # MCP Apps (flag-independent on this side): if gatewayd spooled a
                 # UI payload it injected an opaque marker into the result text.
@@ -16520,7 +16606,10 @@ async def _run_chat(
                 slot._carried_ttft_clock = None
             # Attach accumulated file changes to this turn's assistant row before persist
             _flush_file_changes(
-                slot, turn_boundary=_turn_msg_boundary, turn_start_mid=_turn_start_mid
+                slot,
+                turn_boundary=_turn_msg_boundary,
+                turn_start_mid=_turn_start_mid,
+                shell_ran=bool(_shell_tool_calls),
             )
             # The reply is in the window, so this save is the durable clear of
             # the in-flight marker: retire it first and the omission rides the
@@ -18572,7 +18661,10 @@ async def _run_chat(
         # bug this fix prevents.
         try:
             _flush_file_changes(
-                slot, turn_boundary=_turn_msg_boundary, turn_start_mid=_turn_start_mid
+                slot,
+                turn_boundary=_turn_msg_boundary,
+                turn_start_mid=_turn_start_mid,
+                shell_ran=bool(_shell_tool_calls),
             )
         except Exception:
             logger.debug("_flush_file_changes failed", exc_info=True)

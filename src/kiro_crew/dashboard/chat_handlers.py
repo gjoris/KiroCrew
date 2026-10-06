@@ -1413,6 +1413,7 @@ async def api_chat(request: web.Request) -> web.StreamResponse:
     # user's queued follow-ups never reach it.
     turn_scoped_stream = not may_configure
     slot._file_changes = []  # Reset file-change accumulator for the new turn
+    slot._write_tool_outcomes = {}  # Reset the per-turn write-outcome map
     # ── Sweep orphaned permissions from prior turns ──
     _sweep_stale_permissions(slot)
 
