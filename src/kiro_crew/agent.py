@@ -2331,6 +2331,7 @@ def _refresh_dynamic_fields(
     # Ensure kiro-cli uses agent-level mcpServers exclusively (not global
     # mcp.json).  Existing configs created before this field was added lack
     # it, causing kiro-cli to fall back to the (possibly empty) global file.
+    config.pop("useLegacyMcpJson", None)
     config["includeMcpJson"] = False
 
     # Seed workspace-relative resources (steering files, AGENTS.md, etc.)

@@ -6985,6 +6985,19 @@ class TestKiroHooksAutoimport:
         assert any("rejected" in rec.message.lower() for rec in caplog.records)
 
 
+class TestRefreshDynamicFieldsLegacyMcpJsonAlias:
+    """kiro-cli reads ``useLegacyMcpJson`` as an alias of ``includeMcpJson``,
+    so a refreshed config that keeps both is refused as a duplicate field."""
+
+    def test_alias_dropped_when_include_mcp_json_written(self):
+        from kiro_crew.agent import _refresh_dynamic_fields
+
+        config = {"useLegacyMcpJson": True}
+        _refresh_dynamic_fields(config)
+        assert config["includeMcpJson"] is False
+        assert "useLegacyMcpJson" not in config
+
+
 class TestRefreshDynamicFieldsStripsStaleUrl:
     """Managed servers are stdio-only; a stale url from an old build must be
     removed on refresh so it can't propagate into the CC config."""
