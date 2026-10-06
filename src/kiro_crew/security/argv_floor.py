@@ -3449,10 +3449,141 @@ def _is_ssh_to_self(text_lower: str) -> bool:
     return False
 
 
+#: Glob metacharacters the shell expands against the filesystem BEFORE git
+#: runs, so the word that reaches git is not the word in the source text.
+_PREVERB_GLOB_CHARS = frozenset("*?[")
+
+
+def _word_is_opaque_preverb(word: str) -> bool:
+    """True when *word*, read quote-aware, is not a plain literal the scan can
+    verify in the position between ``git`` and its subcommand.
+
+    "Plain" means the characters git receives are exactly the characters in the
+    source text: an ordinary flag (``-c``), a flag value (``x=y``), or the
+    subcommand itself. A word is OPAQUE when the shell would rewrite it before
+    git starts — an unquoted expansion or command substitution (``$X``,
+    ``${X}``, ``$(cmd)``, `` `cmd` ``), an unquoted glob the filesystem expands
+    (``p*``, ``pu[s]h``), a brace expansion (``{a,b}``, ``{1..3}``), or a
+    redirection (``>out``, ``2>&1``) — because its run-time value cannot be
+    verified here. A fragment (unterminated quote / trailing escape) is opaque
+    too: it is not executable as written, so failing closed on it loses no
+    legitimate command.
+
+    Only UNQUOTED occurrences count: ``'$X'`` and ``"*"`` are literals the shell
+    hands over verbatim, so a quoted word is never opaque on their account. The
+    one shell state machine (:func:`_iter_shell_chars`) decides quoted-ness, so
+    this cannot disagree with the rest of the push scan about where a quote ends.
+    """
+    # A redirection is read off the raw token (the operator character still
+    # exists there) via the same model the argument scan uses.
+    if _push_token_redirection(word)[0]:
+        return True
+    brace_open = False
+    brace_body: list[str] = []
+    for step in _iter_shell_chars(word):
+        if step.trailing_escape:
+            return True  # fragment: not runnable as written -> fail closed
+        if not step.active:
+            continue  # inside quotes / escaped: a literal the shell hands over
+        char = step.char
+        if char in "$`":
+            return True  # unquoted expansion or command substitution
+        if char in _PREVERB_GLOB_CHARS:
+            return True  # unquoted filesystem glob
+        if char == "{":
+            brace_open = True
+            brace_body = []
+            continue
+        if brace_open:
+            if char == "}":
+                body = "".join(brace_body)
+                if "," in body or ".." in body:
+                    return True  # brace EXPANSION (``{a,b}`` / ``{1..3}``)
+                brace_open = False
+            else:
+                brace_body.append(char)
+    # An unterminated quote leaves the walk in an open state; such a word is not
+    # runnable, so treat it as opaque (fail closed), mirroring the fragment case.
+    return bool(brace_open)
+
+
+def _git_segment_has_opaque_preverb(segment: str) -> bool:
+    """True when *segment* is a ``git`` command whose words up to and INCLUDING
+    the subcommand position carry an unverifiable (opaque) word.
+
+    This closes the gap of issue #8459: an unquoted expansion that evaporates at
+    run time (``git ${UNSET} push origin main``, ``git $(echo '') push origin
+    main``) is removed from argv by the shell, so git really pushes, yet the
+    word it leaves in the SOURCE text (``${unset}``, ``$(echo``) is neither a
+    flag nor the subcommand — so the verb-anchored regex and the normalizer
+    seek both stop one token short and the push is never judged. Rather than
+    model expansion, the floor refuses to verify: for a segment whose COMMAND
+    WORD is ``git``, any non-plain word before or at the subcommand position
+    makes the push unverifiable, so it is treated as a publish and the caller's
+    fail-closed machinery denies it.
+
+    The command-word check is what keeps ordinary commands that merely MENTION
+    git allowed: ``command -v git >/dev/null``, ``grep git *.py`` and
+    ``exec git "$@"`` all have a command word other than ``git``, so this
+    returns False and the segment is left alone. Refusing forms whose own
+    command word is git and whose pre-subcommand words are non-plain — e.g.
+    ``git $X status`` — is the accepted fail-safe cost of the smallest fix.
+
+    Reuses :func:`_split_shell_words` (the same quote-aware splitter the
+    argument scan uses) and the ``_GIT_ARG_FLAGS`` subcommand-seek rules shared
+    with :func:`_is_git_push_via_normalizer`; no new lexer.
+    """
+    words = _split_shell_words(segment)
+    # The command word is the FIRST word of the segment, read the way bash reads
+    # it: glued leading operators stripped (``(git`` -> ``git``) and quoting
+    # removed (``"git"`` -> ``git``). A leading assignment or an opaque program
+    # word (``$GIT push``) is NOT our concern here — program-position expansion
+    # is already covered by ``_GIT_PUBLISH_SUBST_PROGRAM_RE`` — so this fires
+    # only when the literal command word resolves to git.
+    first = next((w for w in words if w.strip()), None)
+    if first is None:
+        return False
+    command_word = _dequote_token(_cut_at_operator(first))
+    if command_word != "git" and os.path.basename(command_word) != "git":
+        return False
+    # Walk the words after the command word, skipping plain flags (and the one
+    # value a value-taking global flag consumes), until the subcommand position.
+    # Any opaque word reached ON THE WAY — or the opaque word that stands IN the
+    # subcommand position itself — means the push is unverifiable.
+    start = next(i for i, w in enumerate(words) if w is first)
+    i = start + 1
+    while i < len(words):
+        word = words[i]
+        if not word.strip():
+            i += 1  # zero-width/whitespace-only word -- never the subcommand
+            continue
+        if _word_is_opaque_preverb(word):
+            return True
+        cut = _cut_at_operator(word)
+        if cut in _GIT_ARG_FLAGS:
+            # A value-taking global flag (``-c``/``-C``/...). Its value is still
+            # BEFORE the subcommand, so an opaque value (``-c $EVIL``) is caught
+            # on the next iteration; a plain value is skipped so it is not
+            # mistaken for the subcommand.
+            i += 1
+            if i < len(words) and words[i].strip() and _word_is_opaque_preverb(words[i]):
+                return True
+            i += 1
+            continue
+        if cut.startswith("-"):
+            i += 1  # a plain simple flag
+            continue
+        # First plain non-flag word: the subcommand position, reached with no
+        # opaque word before it. Nothing unverifiable -> leave the segment to
+        # the verb-anchored passes above.
+        return False
+    return False
+
+
 def _is_git_publish(text_lower: str) -> bool:
     """Return True if *text_lower* invokes ``git push`` (verb-anchored).
 
-    Uses a two-pass approach:
+    Uses a three-pass approach:
 
     1. **Fast first-pass (regex):** ``_GIT_PUBLISH_RE`` and
        ``_GIT_PUBLISH_GLUE_RE`` catch normal ``git push`` invocations and
@@ -3462,6 +3593,15 @@ def _is_git_publish(text_lower: str) -> bool:
     2. **Normalizer second-pass:** ``normalize_shell_command`` strips quotes
        and empty-string concatenation so evasions like ``"git" push``,
        ``g""it push``, or ``'g'it push`` are resolved to their true tokens.
+    3. **Opaque-preverb third-pass (issue #8459):** per true shell segment,
+       when the COMMAND WORD is ``git`` and a non-plain word (unquoted
+       expansion, command substitution, glob, redirection) sits before or at
+       the subcommand position, the real push target cannot be verified before
+       the shell rewrites the line — ``git ${UNSET} push origin main`` — so the
+       segment is treated as a publish and the caller's fail-closed machinery
+       (``_git_push_args`` cannot parse it, so ``_GIT_PUBLISH_UNGATED`` fires)
+       denies it. A segment whose command word is NOT git (``command -v git``,
+       ``grep git *.py``, ``exec git "$@"``) is unaffected.
 
     Does NOT match ``git stash push``, ``git commit -m '...push...'``,
     ``git log --grep push``, etc.
@@ -3478,7 +3618,14 @@ def _is_git_publish(text_lower: str) -> bool:
 
     # Pass 2: normalizer-based detection (catches quote evasions like
     # "git" push, g""it push, 'g'it push)
-    return _is_git_push_via_normalizer(text_lower)
+    if _is_git_push_via_normalizer(text_lower):
+        return True
+
+    # Pass 3: opaque word before/at the subcommand of a git segment (#8459).
+    return any(
+        _git_segment_has_opaque_preverb(segment)
+        for segment in _split_push_command_segments(text_lower)
+    )
 
 
 # Git global flags that consume a separate argument token (appear between
