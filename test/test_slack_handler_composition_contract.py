@@ -1505,7 +1505,7 @@ _GOLDEN_DIGESTS: dict[str, str] = {
     "compaction_failed_permanent": "9762853e90d425652892c30ebee48248a58b4e9f8d2daa28e3a8a37a3563fdb3",
     "compaction_failed_transient_replay": "5d66704abad764ed644d01d6a0b59c01cdc5c63460a8140b2224401aa191e601",
     "credential_redaction": "0782b2c2f1c02318bb8fae507aa566609357c98c52fa856e63e27564c9452177",
-    "delivery_failures": "9eb017651e80c8908f83f0d5de6b62622c1b5a0e4afc369697eea6ef1abf5d8d",
+    "delivery_failures": "41d558d70352335cce8a247ab5b116c4a7338b97268fe1c9e859fc0b679e94c7",
     "error_acp": "8efbab04ebf42b0989c9d19a805da15a77bd032d920f031a215a66f7ea6f2e4c",
     "error_after_partial_text": "4544ee57247e9d6ee18c086a5c7b32247a51a21616d19ee42b54ba5ea4ae396b",
     "error_from_trusted_bot": "f347570f5f67a5ca3659343ec439a0802b29970f757e66c3a5330e530afac193",

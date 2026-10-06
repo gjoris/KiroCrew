@@ -1402,10 +1402,13 @@ async def handle_message(
     # Post inline stop button (only in threaded conversations to avoid breaking tests)
     _working_ts: str | None = None
     if thread_ts:
-
-        _working_ts = await slack.post_blocks(
-            channel, build_working_blocks(session_key), "Working…", reply_ts
-        )
+        # Best-effort: a failed stop-button post must not drop the user's message.
+        try:
+            _working_ts = await slack.post_blocks(
+                channel, build_working_blocks(session_key), "Working…", reply_ts
+            )
+        except Exception:
+            logger.warning("Failed to post inline stop button", exc_info=True)
 
     # The Slack wire this turn's answer streams to, and every flag the end of the turn
     # reads off it (``handler_runtime/stream.py``).
