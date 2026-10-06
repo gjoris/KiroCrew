@@ -44,6 +44,7 @@ import { useBundleReload, handleUpdateProgress } from './websocket/bundleReload'
 import {
   handleArtifactUpdate,
   handleCredentialRedactionChanged,
+  handleDashboardMoved,
   handleMemberProjection,
   handleMembersSubscribed,
   handleSourceStatus,
@@ -326,6 +327,12 @@ export function useWebSocket() {
             }
             break
           }
+          case 'dashboard_value_written':
+            // A crewmate wrote one of its own dashboard fields mid-turn. The frame
+            // carries only {slug}; the tab's refetch re-asks the server, which
+            // re-composes the page and re-checks ownership.
+            handleDashboardMoved(queryClient, data)
+            break
           case 'notification_ack':
             dispatch(ackNotificationByTs(data.ts))
             break
@@ -409,6 +416,10 @@ export function useWebSocket() {
           }
           case 'member_projection':
             handleMemberProjection(data)
+            // A fold advanced. Every number on a crewmate's dashboard but its own
+            // agentic writes comes from a fold, so this is the other half of the
+            // tab's liveness -- see `handleDashboardMoved`.
+            handleDashboardMoved(queryClient, data)
             break
           case 'members_subscribed':
             handleMembersSubscribed(queryClient, data)
