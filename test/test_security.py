@@ -879,6 +879,29 @@ class TestTokenParamValueRedaction:
         result, _ = redact_credentials(text)
         assert result == "https://h.example/x?a=1&token=[REDACTED: credential]&b=2"
 
+    def test_template_placeholder_dollar_is_not_redacted(self) -> None:
+        """A JS/TS `${...}` placeholder after `token=` is code, not a value."""
+        for text in (
+            "const url = `${base}&token=${encodeURIComponent(jwt)}`;",
+            "https://h.example/x?token=${x}",
+        ):
+            result, warnings = redact_credentials(text)
+            assert result == text, text
+            assert warnings == [], text
+
+    def test_dollar_values_without_placeholder_still_redact(self) -> None:
+        """Only `${` is exempt: a `$`-led value or a lone trailing `$` is redacted."""
+        for value in ("$abc", "$"):
+            for tail in ("", "&b=2"):
+                result, warnings = redact_credentials(f"https://h/x?token={value}{tail}")
+                assert result == f"https://h/x?token=[REDACTED: credential]{tail}", (value, tail)
+                assert warnings == [f"Redacted token parameter value ({len(value)} chars)"]
+
+    def test_value_before_brace_still_redacts(self) -> None:
+        result, warnings = redact_credentials("https://h/x?token=abc${x}")
+        assert result == "https://h/x?token=[REDACTED: credential]{x}"
+        assert warnings == ["Redacted token parameter value (4 chars)"]
+
     def test_entity_equals_does_not_capture_its_own_semicolon(self) -> None:
         """A present `;` is the reference's terminator, never the value.
 

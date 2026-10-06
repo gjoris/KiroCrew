@@ -1775,7 +1775,7 @@ def _credential_redaction_plan(
         if any(text.startswith(tag, value_start) for tag in CREDENTIAL_REDACTION_TAGS):
             continue
         gaps = _uncovered(value_start, value_end, taken)
-        if not gaps:
+        if not gaps or text[value_start : value_end + 1] == "${":  # JS/TS template placeholder
             continue
         for start, end in gaps:
             pass4.append((start, end, _REDACTED_CREDENTIAL_TAG))
