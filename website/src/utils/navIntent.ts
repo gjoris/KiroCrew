@@ -45,6 +45,22 @@ export function chatDeepLinkSlot(path: string): string {
 }
 
 /**
+ * The chat composer currently on screen in THIS window, when ChatPage (not an
+ * embedded one) is mounted. A hand-off to the slot it already shows cannot go
+ * through the sessionStorage prefill: activating an already-active slot does not
+ * re-run the slot-restore effect, so the seed would sit unread for its 30s TTL
+ * and then overwrite whatever the user typed on their next switch back.
+ */
+let openComposer: { slotKey: string; append: (text: string) => void } | null = null
+
+/** ChatPage registers its live composer; the returned function unregisters it. */
+export function registerOpenComposer(slotKey: string, append: (text: string) => void): () => void {
+  const entry = { slotKey, append }
+  openComposer = entry
+  return () => { if (openComposer === entry) openComposer = null }
+}
+
+/**
  * Perform a navigation intent forwarded from a popout window, in THIS main
  * dashboard window. Order matters: the prefill must be in sessionStorage
  * before the slot switch + route change so ChatPage's slot-restore effect
@@ -54,9 +70,16 @@ export function applyNavIntentInMain(
   intent: NavIntent,
   deps: { navigate: (path: string) => void; switchSlot: (slotKey: string) => void },
 ): void {
-  if (intent.prefill) writePrefill(intent.prefill.slotKey, intent.prefill.prompt)
-  if (intent.slotKey) deps.switchSlot(intent.slotKey)
-  deps.navigate(intent.path)
+  const prefill = intent.prefill
+  const open = openComposer
+  if (prefill?.append !== undefined && intent.path === '/chat'
+    && intent.slotKey === prefill.slotKey && open?.slotKey === prefill.slotKey) {
+    open.append(prefill.append)
+  } else {
+    if (prefill) writePrefill(prefill.slotKey, prefill.prompt)
+    if (intent.slotKey) deps.switchSlot(intent.slotKey)
+    deps.navigate(intent.path)
+  }
   // Best-effort raise — a channel-delivered intent has no user activation, so
   // browsers may veto this; the opener-focus on the popout side is the
   // reliable path and this is just the assist for the claimed-but-not-opener

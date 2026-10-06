@@ -6,7 +6,7 @@ import {
   type PopoutMsg,
   type NavIntent,
 } from '../utils/popoutController'
-import { applyNavIntentInMain, chatDeepLinkSlot, writePrefill, PREFILL_STORAGE_KEY } from '../utils/navIntent'
+import { applyNavIntentInMain, chatDeepLinkSlot, registerOpenComposer, writePrefill, PREFILL_STORAGE_KEY } from '../utils/navIntent'
 
 /**
  * Navigation-intent forwarding tests (popout navigation containment).
@@ -224,6 +224,40 @@ describe('applyNavIntentInMain', () => {
     applyNavIntentInMain({ path: '/artifacts' }, { navigate, switchSlot })
     expect(switchSlot).not.toHaveBeenCalled()
     expect(navigate).toHaveBeenCalledWith('/artifacts')
+  })
+
+  it('appends to the composer already open on the target slot instead of leaving a stale prefill', () => {
+    const append = vi.fn()
+    const unregister = registerOpenComposer('chat-1', append)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const switchSlot = vi.fn()
+    try {
+      applyNavIntentInMain(
+        { path: '/chat', slotKey: 'chat-1', prefill: { slotKey: 'chat-1', prompt: 'old draft\n\nref', append: 'ref' } },
+        { navigate: vi.fn(), switchSlot },
+      )
+      expect(append).toHaveBeenCalledWith('ref')
+      expect(setItem).not.toHaveBeenCalledWith(PREFILL_STORAGE_KEY, expect.anything())
+      expect(switchSlot).not.toHaveBeenCalled()
+    } finally {
+      unregister()
+    }
+  })
+
+  it('still seeds the prefill when the open composer shows a different slot', () => {
+    const append = vi.fn()
+    const unregister = registerOpenComposer('chat-2', append)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    try {
+      applyNavIntentInMain(
+        { path: '/chat', slotKey: 'chat-1', prefill: { slotKey: 'chat-1', prompt: 'ref', append: 'ref' } },
+        { navigate: vi.fn(), switchSlot: vi.fn() },
+      )
+      expect(append).not.toHaveBeenCalled()
+      expect(setItem).toHaveBeenCalledWith(PREFILL_STORAGE_KEY, expect.stringContaining('"prompt":"ref"'))
+    } finally {
+      unregister()
+    }
   })
 })
 

@@ -133,4 +133,21 @@ describe('ArtifactDetailPage popout navigation containment', () => {
     await waitFor(() => expect(vi.mocked(api).createChatSlot).toHaveBeenCalledTimes(1))
     expect(vi.mocked(api).createChatSlot.mock.calls[0][6]).toBe('cr-queue')
   })
+
+  it('popout: send to a session over an unsaved sidebar comment forwards without asking, since nothing is lost', async () => {
+    vi.mocked(api).artifactComments = vi.fn().mockResolvedValue({ comments: [] })
+    vi.mocked(api).createChatSlot = vi.fn().mockResolvedValue({ key: 'chat-new' })
+    renderPage(true)
+    await waitFor(() => expect(screen.getByText(/Artifact: cr-queue/i)).toBeInTheDocument())
+    const commentsToggle = screen.getByLabelText('Toggle comments')
+    if (commentsToggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(commentsToggle)
+    fireEvent.click(await screen.findByRole('button', { name: /Add comment/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'unsent note' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    await waitFor(() => expect(vi.mocked(forwardToMain)).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByPlaceholderText('Add a comment on the whole artifact…')).toHaveValue('unsent note')
+  })
 })

@@ -385,6 +385,167 @@ describe('ArtifactDetailPage anchored comments', () => {
     expect(vi.mocked(api).postArtifactComment).not.toHaveBeenCalled()
   })
 
+  it('sending to a session over an unsaved sidebar comment asks first; cancelling creates no session', async () => {
+    // The sidebar's add box is local state the selection-composer guard cannot
+    // see; leaving for a chat would unmount it with the text inside.
+    const create = vi.fn().mockResolvedValue({ key: 'chat-new' })
+    vi.mocked(api).createChatSlot = create
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Toggle agent chat')).toBeInTheDocument())
+    const commentsToggle = screen.getByLabelText('Toggle comments')
+    if (commentsToggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(commentsToggle)
+    fireEvent.click(await screen.findByRole('button', { name: /Add comment/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'unsent note' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Discard your unsaved comment?')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(create).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('Add a comment on the whole artifact…')).toHaveValue('unsent note')
+  })
+
+  it('a sidebar comment started while the new session is being created is asked about before leaving', async () => {
+    let resolve!: (v: { key: string }) => void
+    vi.mocked(api).createChatSlot = vi.fn().mockReturnValue(new Promise((r) => { resolve = r }))
+    renderPage(<Routes><Route path="/chat" element={<div>chat page target</div>} /></Routes>)
+    await waitFor(() => expect(screen.getByLabelText('Toggle agent chat')).toBeInTheDocument())
+    const commentsToggle = screen.getByLabelText('Toggle comments')
+    if (commentsToggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(commentsToggle)
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    // Nothing was dirty at the click, so no prompt yet; the user starts a comment mid-create.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: /Add comment/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'typed while waiting' } })
+    await act(async () => { resolve({ key: 'chat-new' }) })
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Discard your unsaved comment?')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByText('chat page target')).toBeNull()
+    expect(screen.getByPlaceholderText('Add a comment on the whole artifact…')).toHaveValue('typed while waiting')
+  })
+
+  it('a sidebar comment already confirmed for discard is not asked about again after the create', async () => {
+    vi.mocked(api).createChatSlot = vi.fn().mockResolvedValue({ key: 'chat-new' })
+    renderPage(<Routes><Route path="/chat" element={<div>chat page target</div>} /></Routes>)
+    await waitFor(() => expect(screen.getByLabelText('Toggle agent chat')).toBeInTheDocument())
+    const commentsToggle = screen.getByLabelText('Toggle comments')
+    if (commentsToggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(commentsToggle)
+    fireEvent.click(await screen.findByRole('button', { name: /Add comment/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'let it go' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Discard comment' }))
+    await waitFor(() => expect(screen.getByText('chat page target')).toBeInTheDocument())
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('confirming the discard clears the sidebar box at once, so a comment started afterwards is asked about', async () => {
+    let resolve!: (v: { key: string }) => void
+    vi.mocked(api).createChatSlot = vi.fn().mockReturnValue(new Promise((r) => { resolve = r }))
+    renderPage(<Routes><Route path="/chat" element={<div>chat page target</div>} /></Routes>)
+    await waitFor(() => expect(screen.getByLabelText('Toggle agent chat')).toBeInTheDocument())
+    const commentsToggle = screen.getByLabelText('Toggle comments')
+    if (commentsToggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(commentsToggle)
+    fireEvent.click(await screen.findByRole('button', { name: /Add comment/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'first' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Discard comment' }))
+    await waitFor(() => expect(screen.queryByPlaceholderText('Add a comment on the whole artifact…')).toBeNull())
+
+    // A different comment, started while the create is still in flight.
+    fireEvent.click(await screen.findByRole('button', { name: /Add comment/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'second' } })
+    await act(async () => { resolve({ key: 'chat-new' }) })
+    const again = await screen.findByRole('dialog')
+    fireEvent.click(within(again).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByText('chat page target')).toBeNull()
+    expect(screen.getByPlaceholderText('Add a comment on the whole artifact…')).toHaveValue('second')
+  })
+
+  it('confirming the discard closes the selection composer before the hand-off navigates', async () => {
+    let resolve!: (v: { key: string }) => void
+    vi.mocked(api).createChatSlot = vi.fn().mockReturnValue(new Promise((r) => { resolve = r }))
+    renderPage(<Routes><Route path="/chat" element={<div>chat page target</div>} /></Routes>)
+    await waitFor(() => expect(screen.getByLabelText('Toggle agent chat')).toBeInTheDocument())
+    expect(selectInBody('beta')).toBe(true)
+    fireEvent.change(await screen.findByLabelText(COMPOSER_INPUT), { target: { value: 'not yet added' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Discard comment' }))
+    // Discarded at once, while the create is still in flight.
+    await waitFor(() => expect(screen.queryByLabelText(COMPOSER_INPUT)).toBeNull())
+    await act(async () => { resolve({ key: 'chat-new' }) })
+    // One prompt only: the discarded box is not asked about a second time.
+    await waitFor(() => expect(screen.getByText('chat page target')).toBeInTheDocument())
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a discarded widget-iframe comment box closes at confirm, while the create is pending', async () => {
+    let resolve!: (v: { key: string }) => void
+    vi.mocked(api).createChatSlot = vi.fn().mockReturnValue(new Promise((r) => { resolve = r }))
+    vi.mocked(api).artifact = vi.fn().mockResolvedValue(mkArtifact({ kind: 'widget', content: '<p>widget body</p>' }))
+    vi.mocked(api.sandboxDocUrl).mockResolvedValue({ url: '/sandbox-doc/test/tok' })
+    const { container } = renderPage(<Routes><Route path="/chat" element={<div>chat page target</div>} /></Routes>)
+    const frame = await waitFor(() => {
+      const node = container.querySelector('iframe')
+      expect(node).not.toBeNull()
+      return node as HTMLIFrameElement
+    })
+    const source = { postMessage: vi.fn() }
+    Object.defineProperty(frame, 'contentWindow', { value: source, configurable: true })
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'mc-comment-select', quote: 'widget body', prefix: '', suffix: '', startOffset: 0, endOffset: 11, rect: { x: 20, y: 40 } },
+      source: source as unknown as Window,
+    }))
+    fireEvent.change(await screen.findByLabelText(COMPOSER_INPUT), { target: { value: 'from the frame' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Discard comment' }))
+    await settle()
+    expect(screen.queryByLabelText(COMPOSER_INPUT)).toBeNull()
+    await act(async () => { resolve({ key: 'chat-new' }) })
+    await waitFor(() => expect(screen.getByText('chat page target')).toBeInTheDocument())
+  })
+
+  it('a sidebar draft is still asked about when the composer guard proceeds without asking', async () => {
+    // A composer post in flight makes the composer guard go ahead silently; the
+    // sidebar's own unsaved text has not been agreed to by anyone.
+    vi.mocked(api).postArtifactComment = vi.fn().mockReturnValue(new Promise(() => {}))
+    vi.mocked(api).createChatSlot = vi.fn().mockResolvedValue({ key: 'chat-new' })
+    renderPage(<Routes><Route path="/chat" element={<div>chat page target</div>} /></Routes>)
+    await waitFor(() => expect(screen.getByLabelText('Toggle agent chat')).toBeInTheDocument())
+    expect(selectInBody('beta')).toBe(true)
+    fireEvent.change(await screen.findByLabelText(COMPOSER_INPUT), { target: { value: 'saving' } })
+    fireEvent.click(screen.getByLabelText('Add comment'))
+    await waitFor(() => expect(vi.mocked(api).postArtifactComment).toHaveBeenCalledTimes(1))
+
+    const commentsToggle = screen.getByLabelText('Toggle comments')
+    if (commentsToggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(commentsToggle)
+    fireEvent.click(await screen.findByRole('button', { name: /^Add comment$/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add a comment on the whole artifact…'), { target: { value: 'sidebar text' } })
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send to a session' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New session' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByPlaceholderText('Add a comment on the whole artifact…')).toHaveValue('sidebar text')
+    expect(screen.queryByText('chat page target')).toBeNull()
+  })
+
   it('does not offer anchored add while editing', async () => {
     // Selecting inside a textarea is an edit gesture, not an annotation gesture.
     renderPage()

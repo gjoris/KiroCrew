@@ -217,7 +217,7 @@ const DRAWER_UNCOVERED_PX = 40
 // Canonical home is utils/navIntent (shared with the popout nav-intent
 // applier); re-exported here for this page's historical importers.
 export { PREFILL_STORAGE_KEY } from '../utils/navIntent'
-import { PREFILL_STORAGE_KEY, writePrefill } from '../utils/navIntent'
+import { PREFILL_STORAGE_KEY, registerOpenComposer, writePrefill } from '../utils/navIntent'
 import WelcomeView from '../components/WelcomeView'
 import { MemoryModeChip, type MemoryMode } from '../components/MemoryModeChip'
 import { openPanelView, claimAppAutoOpen } from '../hooks/usePanelTabs'
@@ -1266,6 +1266,20 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
     setInput,
     raisePrefillHint,
   })
+
+  // A popout hand-off to the session already open here (see registerOpenComposer):
+  // append to the live composer and persist it, as the pendingInput path does,
+  // rather than replacing what the user is typing.
+  useEffect(() => {
+    if (embedded || !activeSlot) return
+    return registerOpenComposer(activeSlot, (text) => {
+      const next = mergeIntoDraft(composerDraft.get(), text)
+      setDraft(drafts.current, activeSlot, next)
+      saveDraftsDebounced()
+      setInput(next)
+      raisePrefillHint()
+    })
+  }, [embedded, activeSlot, composerDraft, drafts, saveDraftsDebounced, setInput, raisePrefillHint])
 
   // Consume prompt from token payload (channel challenge-and-redirect flow).
   // The prompt is HMAC-signed in the token — server validates the signature

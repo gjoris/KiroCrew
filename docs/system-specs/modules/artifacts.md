@@ -1584,7 +1584,26 @@ Picking one navigates there through the page's `sendNav` and appends a one-line
 reference (`Reference artifact "<name>" (slug \`<slug>\`; load it with
 artifact_get).`) to that session's composer draft with `mergeIntoDraft`, so an
 unsent draft is kept. Nothing is sent: the user reviews and submits. The menu is
-hidden while editing, because navigating away would drop unsaved edits.
+hidden while editing, because navigating away would drop unsaved edits. The
+unsaved-comment-draft prompt runs before anything else, including creating the
+new session, so cancelling it never leaves an empty session behind. It covers the
+selection composer and the comments sidebar's own boxes (add, reply, in-place
+edit), which report through `CommentsSidebar`'s `onDraftDirtyChange`. A
+confirmed discard takes effect at once: the sidebar's boxes reset (its
+`discardSignal`) and the selection toolbar remounts, closing its box. So after a
+new session is created, any draft still present was typed since, and the
+hand-off asks about it before navigating. If the create then fails, the
+discarded draft is already gone. If the user starts editing while the create is
+in flight, the hand-off is abandoned. In a popout the guard is skipped: `sendNav` forwards the
+intent to a main window and the popout stays on the artifact, so no draft is
+lost. The sidebar check covers send-to-session only, not Back or the other
+`sendNav` exits. A failed create shows as an `ErrorNotice` on the
+page, since the menu has already closed. From a popout, a hand-off to the session
+the main window already shows on `/chat` is appended to that live composer
+(`registerOpenComposer` in `utils/navIntent.ts`, via the intent's
+`prefill.append`) instead of written to the sessionStorage prefill: activating an
+already-active slot does not re-run the slot-restore effect, so the seed would
+otherwise sit unread and later overwrite newer typing.
 
 **Session resolution (frontend)** — the active bound session is resolved from
 the Redux slots snapshot (`slot.artifact === slug`), so no extra endpoint exists:

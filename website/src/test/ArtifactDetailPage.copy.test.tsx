@@ -132,6 +132,8 @@ describe('ArtifactDetailPage copy content', () => {
 
     act(() => vi.advanceTimersByTime(1500))
     expect(copyBtn()).toBeInTheDocument()
+    // The glyph reverts; the page-level notice keeps the failure readable.
+    expect(screen.getByRole('alert')).toHaveTextContent('Copy failed')
   })
 
   it('lets a retry own the status and timeout after a copy failure', async () => {

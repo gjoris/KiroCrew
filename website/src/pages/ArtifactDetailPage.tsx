@@ -398,6 +398,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
   const [editedContent, setEditedContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [sendToSessionError, setSendToSessionError] = useState<string | null>(null)
   const [showPublish, setShowPublish] = useState(false)
   // Tag editing: tags shown in the header are editable inline. Adding a tag
   // posts metadata-only (no version bump). Removing a tag works the same way.
@@ -1144,13 +1145,20 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
     }, () => false)
   }, [postAnchoredMut, isMobile])
 
-  const confirmDiscardDraft = useCallback(() => confirm({
-    title: i18nT('components.markdownPanel.discard_unsaved_comment'),
-    confirmLabel: i18nT('components.markdownPanel.discard_comment_button'),
-    // The composer it guards is a body portal at z-[9999]; the prompt must
-    // take the layer above it or the box swallows clicks on its buttons.
-    layer: 'top',
-  }), [confirm])
+  // Counts prompts actually shown, so a caller of `guardCommentDraft` can tell
+  // "the user agreed to discard" from "the hook went ahead without asking"
+  // (a composer post already in flight).
+  const discardPromptsRef = useRef(0)
+  const confirmDiscardDraft = useCallback(() => {
+    discardPromptsRef.current += 1
+    return confirm({
+      title: i18nT('components.markdownPanel.discard_unsaved_comment'),
+      confirmLabel: i18nT('components.markdownPanel.discard_comment_button'),
+      // The composer it guards is a body portal at z-[9999]; the prompt must
+      // take the layer above it or the box swallows clicks on its buttons.
+      layer: 'top',
+    })
+  }, [confirm])
   const quoteOf = useCallback((a: PendingAnchor) => a.anchor, [])
   const quoteOnly = useCallback((anchor: string): PendingAnchor => ({ anchor }), [])
   // A composer post refused after its box was closed: the page's comment
@@ -1166,13 +1174,77 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
   // `guardCommentDraft` first — in the draft's own words, since "unsaved
   // changes" would read as file edits at risk.
   const {
-    selectionComposer, iframeSelection, stageIframeSelection, clearSelectionState, guardCommentDraft,
+    selectionComposer, iframeSelection, stageIframeSelection, clearSelectionState, guardCommentDraft, hasCommentDraft,
   } = useSelectionComposerAnchor<PendingAnchor>({
     resolveDomAnchor: resolveSelectionAnchor, quoteOf, quoteOnly, submit: submitAnchored,
     draftKey: `mc-artifact-composer-draft:${slug}`, confirmDiscard: confirmDiscardDraft, onRefusedAfterClose,
   })
   // Navigating between artifacts drops any anchor of the departing document.
   useEffect(() => { clearSelectionState() }, [slug, clearSelectionState])
+
+  // The comments sidebar's own composers (add box, reply, in-place edit) hold
+  // local state the selection-composer guard cannot see. A send-to-session
+  // hand-off navigates away and unmounts them, so it asks about these too. A
+  // popout does not navigate (sendNav forwards the intent to a main window and
+  // stays on the artifact), so there is nothing to lose and nothing to ask.
+  //
+  // A confirmed discard takes effect AT ONCE: the sidebar's boxes reset and the
+  // selection toolbar remounts (closing its box; the hook already cleared the
+  // stored draft). So any draft present after a slow create was typed since,
+  // and is asked about with no bookkeeping about which drafts were seen. The
+  // cost, accepted by the owner: if the create then fails, the discarded draft
+  // is gone even though the page stayed.
+  const sidebarDraftDirtyRef = useRef(false)
+  const onSidebarDraftDirtyChange = useCallback((dirty: boolean) => { sidebarDraftDirtyRef.current = dirty }, [])
+  const [sidebarDiscardSignal, setSidebarDiscardSignal] = useState(0)
+  const [composerResetNonce, setComposerResetNonce] = useState(0)
+  // The remount lands on the next commit; until then the hook still reports
+  // the discarded box as dirty, which must not count as a new draft.
+  const composerDiscardPendingRef = useRef(false)
+  useEffect(() => { composerDiscardPendingRef.current = false }, [composerResetNonce])
+  const discardDraftsBeforeLeaving = useCallback((): Promise<boolean> => new Promise((resolve) => {
+    const sidebar = sidebarDraftDirtyRef.current
+    const composer = hasCommentDraft() && !composerDiscardPendingRef.current
+    const discardSidebar = () => {
+      if (!sidebar) return
+      sidebarDraftDirtyRef.current = false
+      setSidebarDiscardSignal((n) => n + 1)
+    }
+    if (composer) {
+      // One prompt covers both: the hook asks and clears the composer's slot.
+      let ok = false
+      const promptsBefore = discardPromptsRef.current
+      void guardCommentDraft(() => { ok = true }).then(async () => {
+        if (!ok) { resolve(false); return }
+        if (discardPromptsRef.current !== promptsBefore) {
+          composerDiscardPendingRef.current = true
+          // Clear the iframe selection too: the remounted toolbar would
+          // otherwise reopen an empty box over the discarded passage.
+          clearSelectionState()
+          setComposerResetNonce((n) => n + 1)
+          discardSidebar()
+          resolve(true)
+          return
+        }
+        // The hook went ahead without asking (its post is already saving), so
+        // nothing has agreed to the sidebar's draft yet.
+        if (sidebar && !(await confirmDiscardDraft())) { resolve(false); return }
+        discardSidebar()
+        resolve(true)
+      })
+    } else if (sidebar) {
+      void confirmDiscardDraft().then((ok) => { if (ok) discardSidebar(); resolve(ok) })
+    } else {
+      resolve(true)
+    }
+  }), [confirmDiscardDraft, guardCommentDraft, hasCommentDraft, clearSelectionState])
+  const guardSendToSession = useCallback((proceed: (recheck: (go: () => void) => void) => void | Promise<void>) => {
+    if (popout) { void proceed((go) => go()); return }
+    void (async () => {
+      if (!(await discardDraftsBeforeLeaving())) return
+      void proceed((go) => { void discardDraftsBeforeLeaving().then((ok) => { if (ok) go() }) })
+    })()
+  }, [popout, discardDraftsBeforeLeaving])
   // No row action beside the composer: the box already carries Add comment and
   // Close, and a third control would break the two-per-row cap. Copying the
   // selection is the composer's own Cmd/Ctrl+C while its input is empty.
@@ -1617,6 +1689,9 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
   // swaps to a check or warning for a moment as the result confirmation (the
   // same success pattern chat messages and diff blocks use).
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+  // The failure itself, held until dismissed or the next copy: the glyph above
+  // reverts after 1.5s, which is too brief to be the only report.
+  const [copyError, setCopyError] = useState<string | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const copyAttemptRef = useRef(0)
   useEffect(() => () => {
@@ -1627,6 +1702,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
     const attempt = ++copyAttemptRef.current
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
     setCopyStatus('idle')
+    setCopyError(null)
     // `copyToClipboard` resolves a boolean and never rejects: `true` only once
     // the text actually reached the clipboard. Gate the confirmation on it so a
     // `false` shows the failure glyph instead of a tick over an unchanged
@@ -1635,16 +1711,16 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
       .then((ok) => {
         if (attempt !== copyAttemptRef.current) return
         setCopyStatus(ok ? 'copied' : 'failed')
+        if (!ok) setCopyError(i18nT('pages.artifactDetailPage.copy_failed'))
         copiedTimerRef.current = setTimeout(() => {
           if (attempt === copyAttemptRef.current) setCopyStatus('idle')
         }, 1500)
       })
   }, [artifact])
-  // Copy failure stays an icon-state glyph (the button itself turns danger with
-  // an aria-live label), not an ErrorNotice: it is a browser clipboard API
-  // outcome rather than a rejected request, and the editor buffer may be dirty,
-  // so there is nothing to hand to the agent. Same decision as the copy
-  // controls in AssistantMessage / PinnedMessagesPanel.
+  // The button's danger glyph and aria-live label are the instant confirmation;
+  // the failure itself is also reported through the page's ErrorNotice stack
+  // (`copyError`), since moving this control into the toolbar touched it and
+  // `errors-use-error-notice` migrates a touched site.
   const copyLabel = copyStatus === 'copied'
     ? i18nT('pages.artifactDetailPage.copied')
     : copyStatus === 'failed'
@@ -1831,7 +1907,10 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
           )}
           {artifact.tags.map((t) => (
             <span key={t} className={`${TOOLBAR_CHIP_CLASS} bg-bg-elevated border border-border text-muted group`}>
-              {t}
+              {/* Own element: the remove button's HoverTip keeps an sr-only copy of
+                  its label in this chip, so the bare text node would no longer be
+                  the chip's whole text. */}
+              <span>{t}</span>
               <HoverTip label={i18nT('pages.artifactDetailPage.remove_tag', { name: t })}>
                 <button
                   type="button"
@@ -2071,7 +2150,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
                 surface, since leaving for a chat would discard the buffer. */}
             {artifact.kind !== 'webapp' && artifact.kind !== 'image' && !editing && (
               <HoverTip label={copyLabel}>
-                <button
+                <Btn
                   type="button"
                   onClick={handleCopyContent}
                   className={`p-1.5 rounded-md border border-border hover:border-border-strong cursor-pointer transition-all ${copyStatus === 'failed' ? 'text-danger hover:text-danger' : 'text-muted hover:text-text'}`}
@@ -2083,14 +2162,16 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
                     : copyStatus === 'failed'
                       ? <AlertCircle size={13} aria-hidden="true" />
                       : <Copy size={13} />}
-                </button>
+                </Btn>
               </HoverTip>
             )}
             {!editing && (
               <ArtifactSendToSession
                 name={artifact.name}
                 slug={artifact.slug}
-                onSend={(intent) => { void guardCommentDraft(() => sendNav(intent)) }}
+                onSend={sendNav}
+                beforeSend={guardSendToSession}
+                onError={setSendToSessionError}
               />
             )}
             {/* Publish — the single publish surface. Web deploy (Publish to
@@ -2161,6 +2242,25 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
         <ErrorNotice
           message={saveError}
           title={i18nT('pages.artifactDetailPage.save_failed')}
+          className="mb-3"
+        />
+
+        {/* A failed "New session" hand-off. Not hidden in the trigger's tooltip:
+            the menu has closed by the time the create rejects, so this is the
+            only place the failure is readable. */}
+        {/* No hand-off: comment draft (sidebar / selection composer text) */}
+        <ErrorNotice
+          message={sendToSessionError}
+          title={i18nT('pages.artifactDetailPage.send_to_session_failed')}
+          onDismiss={() => setSendToSessionError(null)}
+          className="mb-3"
+        />
+
+        {/* A failed Copy. */}
+        {/* No hand-off: comment draft (sidebar / selection composer text) */}
+        <ErrorNotice
+          message={copyError}
+          onDismiss={() => setCopyError(null)}
           className="mb-3"
         />
 
@@ -2273,7 +2373,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
                     render-failure notice) is not part of the artifact. Gated
                     like the native body: a comment is stored against the
                     CURRENT artifact, so a historical snapshot takes none. */}
-                {isCurrent && !editing && <SelectionToolbar key={slug} containerRef={iframeBodyRef} actions={selectionActions} composer={selectionComposer} externalSelection={iframeSelection} externalOnly suspended={narrowPanelOpen} />}
+                {isCurrent && !editing && <SelectionToolbar key={`${slug}:${composerResetNonce}`} containerRef={iframeBodyRef} actions={selectionActions} composer={selectionComposer} externalSelection={iframeSelection} externalOnly suspended={narrowPanelOpen} />}
               </div>
             ) : (
               <div
@@ -2306,7 +2406,7 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
                 {/* Keyed per artifact: the route element is reused across a
                     param-only navigation, and a toolbar that survived it would
                     submit the previous artifact's draft through this one's callbacks. */}
-                {commentable && <SelectionToolbar key={slug} containerRef={previewRef} actions={selectionActions} composer={selectionComposer} suspended={narrowPanelOpen} />}
+                {commentable && <SelectionToolbar key={`${slug}:${composerResetNonce}`} containerRef={previewRef} actions={selectionActions} composer={selectionComposer} suspended={narrowPanelOpen} />}
               </div>
             )}
           </div>
@@ -2319,6 +2419,8 @@ export default function ArtifactDetailPage({ popout = false }: { popout?: boolea
           {panel === 'comments' && (
             <CommentsSidebar
               comments={durableComments}
+              onDraftDirtyChange={onSidebarDraftDirtyChange}
+              discardSignal={sidebarDiscardSignal}
               loading={commentsQuery.isFetching}
               remoteSyncError={remoteSyncError}
               onAdd={addDocComment}
