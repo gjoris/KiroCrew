@@ -1187,17 +1187,22 @@ export default function ChatPane({
   // kiro-cli's steer channel is TEXT-ONLY, so attachments ride as ChatPage's
   // steer sends them — inlined by prepareSendPayload (images as markdown, other
   // files as `[attached_file N]` tokens), the same wire shape doSend now uses.
-  const doSteer = useCallback((opts?: { auto?: boolean }) => {
+  const doSteer = useCallback((opts?: { auto?: boolean; text?: string }) => {
+    // A follow-up chip's own text, steered as-is: like doSend's `optionText`,
+    // it leaves the composer draft, files, pastes and staged quote alone. The
+    // pane hides its chips while busy, so this keeps the `text` contract of
+    // onSteer rather than serving a click the pane offers today.
+    const optionText = opts?.text
     // Nothing to inject into: busy purely because background sub-agents are
     // still running (the parent turn already ended). Same intent — act on
     // this now — so start a real turn through the normal send path with the
     // steer flag, leaving doSend owning the draft and bubble bookkeeping
     // (it inlines attachments as this path does below, so a send the server
     // demotes to the text-only queue still carries them).
-    if (!running) { doSend(undefined, true); return }
-    const raw = input.trim()
-    const files = pendingFiles
-    const sentQuote = consumeQuote('').quote
+    if (!running) { doSend(optionText, true); return }
+    const raw = (optionText ?? input).trim()
+    const files = optionText ? [] : pendingFiles
+    const sentQuote = optionText ? null : consumeQuote('').quote
     // A steer cannot restore what it cleared on an empty payload, so refuse a
     // payload of nothing (the same `isEmptyTurn` ChatPage's steer asks).
     // A staged quote alone is a payload.
@@ -1210,8 +1215,8 @@ export default function ChatPane({
     composerRef.current?.voice()?.disarmForSend()
     // The text-only steer turn: files inlined, the live paste tokens expanded
     // (ChatPage's steer shows the expanded text in its bubble too, so this one
-    // does), the quote opening the text.
-    const turn = buildOutgoingTurn({ text: raw, files, pastes: pasteBlocks, quote: sentQuote }, 'steer')
+    // does), the quote opening the text. A chip's text carries no paste block.
+    const turn = buildOutgoingTurn({ text: raw, files, pastes: optionText ? [] : pasteBlocks, quote: sentQuote }, 'steer')
     const { wire: txt, pastes: steerPastes } = turn
     const sendId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     // `meta.files` is the ORDERED non-image list the `[attached_file N]`
@@ -1231,9 +1236,11 @@ export default function ChatPane({
     }))
     // Cleared HERE (not in ChatInput) so text, attachments and paste blocks
     // clear atomically.
-    setInput('')
-    setPendingFiles([])
-    setPasteBlocks([])
+    if (!optionText) {
+      setInput('')
+      setPendingFiles([])
+      setPasteBlocks([])
+    }
     // `auto` hands the steer-or-queue choice to the gateway for this message
     // (`decisions/points/message_steer.py`); the receipt policy below is unchanged,
     // because a decided send still comes back as a steer's `dispatched` or a
@@ -1986,10 +1993,10 @@ export default function ChatPane({
           followUpLayout={chatConfig.followUpLayout}
           quickSend={dashCfg?.quick_send}
           followUpSourceKey={followUpSourceKey}
-          onFollowUpSelect={(o: string, e: React.MouseEvent) => {
+          onFollowUpSelect={(o: string, e: React.MouseEvent, _key: string | null | undefined, sendNow: (text: string) => void) => {
             // One-click Quick Send takes the same gate as ChatPage: enabled +
             // no shift + not busy + not already in multi-select.
-            if (tryQuickSend(o, dashCfg?.quick_send, e.shiftKey, busy, followUpPickedRef.current.size, (t: string) => doSend(t))) return
+            if (tryQuickSend(o, dashCfg?.quick_send, e.shiftKey, busy, followUpPickedRef.current.size, sendNow)) return
             // Regular options: toggle. Click unpicked → append + mark; click
             // picked → try to remove the text + unmark (if the user edited the
             // text so it no longer matches, leave the text alone — the chip
