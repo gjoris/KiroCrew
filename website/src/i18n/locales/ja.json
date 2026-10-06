@@ -12683,7 +12683,12 @@
           "error": "エラー",
           "paused": "一時停止中",
           "synced": "最新"
-        }
+        },
+        "edit_ignore_patterns": "除外パターンを編集",
+        "save_ignore_patterns": "パターンを保存",
+        "ignore_patterns_none": "除外パターンはありません",
+        "ignore_patterns_next_scan_hint": "保存すると、今後のスキャンで取り込む対象が変わります。ライブラリに既にあるファイルは、下で削除しない限り残ります。パターンはフォルダー内のパスに一致します（例: Archive/**）。",
+        "purge_ignored_matches": "これらのパターンに一致する、ライブラリ内の既存ファイルも削除する"
       },
       "settings": {
         "title": "Ingestion Settings",

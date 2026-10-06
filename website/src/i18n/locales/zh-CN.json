@@ -12683,7 +12683,12 @@
           "error": "错误",
           "paused": "已暂停",
           "synced": "已是最新"
-        }
+        },
+        "edit_ignore_patterns": "编辑忽略模式",
+        "save_ignore_patterns": "保存模式",
+        "ignore_patterns_none": "没有忽略模式",
+        "ignore_patterns_next_scan_hint": "保存后会改变以后扫描所收录的内容。资料库中已有的文件会保留，除非你在下方将其移除。模式匹配文件夹内的路径，例如 Archive/**。",
+        "purge_ignored_matches": "同时移除资料库中与这些模式匹配的已有文件"
       },
       "settings": {
         "title": "Ingestion Settings",

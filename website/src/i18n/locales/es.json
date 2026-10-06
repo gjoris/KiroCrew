@@ -13069,7 +13069,12 @@
           "error": "Error",
           "paused": "En pausa",
           "synced": "Actualizado"
-        }
+        },
+        "edit_ignore_patterns": "Editar patrones de exclusión",
+        "save_ignore_patterns": "Guardar patrones",
+        "ignore_patterns_none": "Sin patrones de exclusión",
+        "ignore_patterns_next_scan_hint": "Guardar cambia lo que recogerán los próximos escaneos. Los archivos que ya están en la biblioteca se conservan, salvo que los elimines abajo. Los patrones se aplican a la ruta dentro de la carpeta, p. ej. Archive/**.",
+        "purge_ignored_matches": "Eliminar también los archivos de la biblioteca que coinciden con estos patrones"
       },
       "settings": {
         "title": "Ingestion Settings",

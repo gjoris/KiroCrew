@@ -13069,7 +13069,12 @@
           "error": "Erreur",
           "paused": "En pause",
           "synced": "À jour"
-        }
+        },
+        "edit_ignore_patterns": "Modifier les motifs d’exclusion",
+        "save_ignore_patterns": "Enregistrer les motifs",
+        "ignore_patterns_none": "Aucun motif d’exclusion",
+        "ignore_patterns_next_scan_hint": "L’enregistrement modifie ce que les prochains scans prendront en compte. Les fichiers déjà présents dans la bibliothèque sont conservés, sauf si tu les supprimes ci-dessous. Les motifs s’appliquent au chemin dans le dossier, p. ex. Archive/**.",
+        "purge_ignored_matches": "Supprimer aussi les fichiers de la bibliothèque qui correspondent à ces motifs"
       },
       "settings": {
         "title": "Ingestion Settings",

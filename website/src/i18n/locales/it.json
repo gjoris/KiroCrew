@@ -13069,7 +13069,12 @@
           "error": "Errore",
           "paused": "In pausa",
           "synced": "Aggiornato"
-        }
+        },
+        "edit_ignore_patterns": "Modifica pattern da ignorare",
+        "save_ignore_patterns": "Salva pattern",
+        "ignore_patterns_none": "Nessun pattern da ignorare",
+        "ignore_patterns_next_scan_hint": "Il salvataggio cambia ciò che verrà acquisito dalle prossime scansioni. I file già presenti nella libreria restano, a meno che non li rimuovi qui sotto. I pattern si applicano al percorso nella cartella, ad es. Archive/**.",
+        "purge_ignored_matches": "Rimuovi anche i file nella libreria che corrispondono a questi pattern"
       },
       "settings": {
         "title": "Ingestion Settings",

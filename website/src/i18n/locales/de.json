@@ -12876,7 +12876,12 @@
           "error": "Fehler",
           "paused": "Pausiert",
           "synced": "Aktuell"
-        }
+        },
+        "edit_ignore_patterns": "Ignoriermuster bearbeiten",
+        "save_ignore_patterns": "Muster speichern",
+        "ignore_patterns_none": "Keine Ignoriermuster",
+        "ignore_patterns_next_scan_hint": "Speichern ändert, was künftige Scans erfassen. Dateien, die schon in der Bibliothek sind, bleiben erhalten, sofern du sie nicht unten entfernst. Muster gelten für den Pfad innerhalb des Ordners, z. B. Archive/**.",
+        "purge_ignored_matches": "Auch Dateien aus der Bibliothek entfernen, die bereits indexiert sind und diesen Mustern entsprechen"
       },
       "settings": {
         "title": "Ingestion Settings",

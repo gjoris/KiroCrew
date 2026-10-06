@@ -12683,7 +12683,12 @@
           "error": "오류",
           "paused": "일시 중지됨",
           "synced": "최신 상태"
-        }
+        },
+        "edit_ignore_patterns": "제외 패턴 편집",
+        "save_ignore_patterns": "패턴 저장",
+        "ignore_patterns_none": "제외 패턴 없음",
+        "ignore_patterns_next_scan_hint": "저장하면 이후 스캔에서 가져올 대상이 바뀝니다. 라이브러리에 이미 있는 파일은 아래에서 제거하지 않는 한 유지됩니다. 패턴은 폴더 안의 경로에 적용됩니다(예: Archive/**).",
+        "purge_ignored_matches": "이 패턴과 일치하는 라이브러리의 기존 파일도 제거"
       },
       "settings": {
         "title": "Ingestion Settings",

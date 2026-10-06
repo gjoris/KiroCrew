@@ -176,6 +176,108 @@ function FolderConfirmDialog({ fileCount, uri, onConfirm, onCancel, isPending }:
   )
 }
 
+/**
+ * View and edit a folder source's ignore patterns after it was added.
+ *
+ * Without this, a pattern missed at add time could only be fixed by removing the
+ * source and adding it again, which drops everything already indexed. The save
+ * only rewrites the pattern list, so future scans skip matching files while
+ * what is already indexed stays. Removing those matches is a separate, opt-in
+ * checkbox (off by default) because it deletes library content.
+ */
+function IgnorePatternsEditor({ source }: { source: Source }) {
+  const queryClient = useQueryClient()
+  const current = parseSourceProps(source).ignorePatterns
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [purge, setPurge] = useState(false)
+
+  const saveMutation = useMutation({
+    mutationFn: ({ patterns, purgeIgnored }: { patterns: string[]; purgeIgnored: boolean }) =>
+      knowledgeApi(`/sources/${source.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(purgeIgnored
+          ? { ignore_patterns: patterns, purge_ignored: true }
+          : { ignore_patterns: patterns }),
+      }),
+    onSuccess: (res) => {
+      setEditing(false)
+      queryClient.invalidateQueries({ queryKey: ['knowledge-sources'] })
+      if ((res as { purge?: string } | undefined)?.purge === 'started') refreshAfterPurge()
+    },
+  })
+
+  // The purge runs as a background task on the gateway, so the PATCH returns
+  // before the files are gone. The file list stops polling once a scan is
+  // complete, so without this the removed files stay on screen until the view
+  // is reopened. Refetch now and a few times more while the purge finishes.
+  const purgeTimers = useRef<ReturnType<typeof setTimeout>[]>([])
+  useEffect(() => () => { purgeTimers.current.forEach(clearTimeout) }, [])
+  const refreshAfterPurge = () => {
+    const refresh = () => {
+      for (const key of [['source-files', source.id], ['knowledge-sources'], ['knowledge-items'],
+        ['knowledge-stats'], ['knowledge-graph'], ['knowledge-embedding-status']]) {
+        queryClient.invalidateQueries({ queryKey: key })
+      }
+    }
+    purgeTimers.current.forEach(clearTimeout)
+    refresh()
+    purgeTimers.current = [1000, 3000, 6000, 10000].map(ms => setTimeout(refresh, ms))
+  }
+
+  const startEdit = () => { setDraft(current.join('\n')); setPurge(false); saveMutation.reset(); setEditing(true) }
+  const patterns = draft.split('\n').map(p => p.trim()).filter(Boolean)
+  const save = () => saveMutation.mutate({ patterns, purgeIgnored: purge && patterns.length > 0 })
+
+  return (
+    <div className="border-t border-border mt-2 pt-2 space-y-1.5 text-[12px]">
+      <div className="flex items-center gap-1.5">
+        <span className="text-muted">{i18nT('pages.knowledge.sourcesList.ignore_patterns')}</span>
+        {!editing && (
+          <button aria-label={i18nT('pages.knowledge.sourcesList.edit_ignore_patterns')} onClick={startEdit}
+            className="text-muted p-0.5 rounded hover:text-text hover:bg-bg-elevated"><Pencil size={12} /></button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-1.5">
+          <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={4}
+            aria-label={i18nT('pages.knowledge.sourcesList.ignore_patterns')}
+            placeholder={i18nT('pages.knowledge.sourcesList.ignore_patterns_one_per_line_e_g_trash_templates')}
+            className="w-full bg-bg-elevated border border-border rounded-md px-2 py-1 text-[12px] font-mono text-text outline-hidden focus-ring" />
+          <p className="text-[11px] text-muted">{i18nT('pages.knowledge.sourcesList.ignore_patterns_next_scan_hint')}</p>
+          <label className="flex items-start gap-1.5 text-[11px] text-text">
+            <input type="checkbox" checked={purge} onChange={e => setPurge(e.target.checked)}
+              aria-label={i18nT('pages.knowledge.sourcesList.purge_ignored_matches')}
+              disabled={patterns.length === 0} className="mt-0.5" />
+            <span>{i18nT('pages.knowledge.sourcesList.purge_ignored_matches')}</span>
+          </label>
+          {saveMutation.isError && (
+            <p role="alert" className="text-[11px] text-danger">
+              {saveMutation.error instanceof Error ? saveMutation.error.message : String(saveMutation.error)}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <button onClick={save} disabled={saveMutation.isPending}
+              className="px-2 py-1 text-[11px] border border-accent rounded hover:bg-accent/10 text-accent disabled:opacity-50 flex items-center gap-1">
+              <Check size={12} /> {i18nT('pages.knowledge.sourcesList.save_ignore_patterns')}
+            </button>
+            <button onClick={() => setEditing(false)} disabled={saveMutation.isPending}
+              className="px-2 py-1 text-[11px] border border-border rounded hover:bg-bg-elevated disabled:opacity-50">
+              {i18nT('pages.knowledge.sourcesList.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : current.length ? (
+        <ul className="font-mono text-[11px] text-text space-y-0.5">
+          {current.map(p => <li key={p} className="truncate">{p}</li>)}
+        </ul>
+      ) : (
+        <p className="text-[11px] text-muted">{i18nT('pages.knowledge.sourcesList.ignore_patterns_none')}</p>
+      )}
+    </div>
+  )
+}
+
 function FolderProgress({ sourceId }: { sourceId: string }) {
   const queryClient = useQueryClient()
   const wasScanning = useRef(false)
@@ -641,6 +743,7 @@ export default function SourcesList({ onIngest, uploadNamespace, setUploadNamesp
               </div>
             </div>
             {/* Inline expandable progress for folder sources */}
+            {isFolderType && isExpanded && <IgnorePatternsEditor source={s} />}
             {isFolderType && isExpanded && <FolderProgress sourceId={s.id} />}
           </div>
           )
