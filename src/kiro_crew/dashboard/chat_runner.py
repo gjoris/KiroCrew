@@ -6530,6 +6530,22 @@ async def _start_next_queued_turn(
     (:func:`_mark_turn_end`).
     """
 
+    # The ONE suspension in this drain, taken before any decision below so each
+    # of them stays atomic with the dequeue (`_purge_superseded_continuations`
+    # and `_drop_revoked_replays` are coroutines that never await). Nothing from
+    # here to `slot.task = task` yields, so the verdict is as current at the
+    # count reset as it is here. Read only while a synthesis is armed, since only
+    # its disarm consumes it. A sub-agent completion that reaches an IDLE slot
+    # during the store read takes the floor itself (`_injection_slot_busy` holds
+    # no lock), so a dispatch here would run beside it: the entry stays queued
+    # for that turn's own drain instead.
+    batch_clear = False
+    if slot._pending_synthesis and slot._queue:
+        owner = slot.task
+        batch_clear = await synthesis_fire_verdict(state, slot) == SYNTHESIS_CLEAR
+        if slot.task is not owner:
+            return False
+
     # A drain that follows a turn's end marks that end before it writes anything:
     # the drop notices, the held-note flush and the cancellation notices below
     # belong to what comes next, not to the turn that ended. Held back only while
@@ -6764,6 +6780,16 @@ async def _start_next_queued_turn(
     # at it), so `consumed` holds it alone.
     is_app_message = any(item.get("kind") == MCP_APP_MESSAGE_KIND for item in consumed)
     if not (is_cron or is_subagent or is_recovery or is_app_message):
+        # A user message after the last completion takes over from the armed
+        # synthesis and ends its batch. One drained while a child is still out
+        # -- running, delivering, pending in memory, or queued in the store, by
+        # the fire gate's own read at the top of this drain -- leaves the count
+        # alone: that batch is still open, and its later results still earn the
+        # synthesis they would without the message. So does a store nobody could
+        # read: a stale count costs at most one extra synthesis, while clearing a
+        # live batch's count loses its one.
+        if batch_clear:
+            slot._synthesis_completion_turns = 0
         slot._pending_synthesis = False
         slot._synthesis_rechecks = 0
 
@@ -7129,6 +7155,7 @@ async def _run_pending_synthesis(state: DashboardState, slot: _ChatSlot) -> None
         # All delivery guards hold. Consume immediately before the turn begins.
         slot._pending_synthesis = False
         slot._synthesis_rechecks = 0
+        slot._synthesis_completion_turns = 0
         # Same successor boundary as the queue drain (see the finalize comment in
         # `_start_next_queued_turn`): this dispatch is reached from the previous
         # turn's tail without a `chat_done`, so the predecessor's streaming row
@@ -7197,6 +7224,22 @@ def _launch_synthesis(state: DashboardState, slot: _ChatSlot) -> None:
     state.push_slots_update()
 
 
+def _drop_single_turn_synthesis(slot: _ChatSlot) -> bool:
+    """Consume a cleared arm whose whole batch reached the slot in one turn.
+
+    That turn (a lone sub-agent's completion, or a wave digest) already
+    reported every result, so the synthesis prompt would only restate it.
+    Exactly one counted turn drops it. Any other count fires, including 0:
+    an arm nothing counted is not judged.
+    """
+    if slot._synthesis_completion_turns != 1:
+        return False
+    slot._pending_synthesis = False
+    slot._synthesis_rechecks = 0
+    slot._synthesis_completion_turns = 0
+    return True
+
+
 def _arm_synthesis_recheck(state: DashboardState, slot: _ChatSlot) -> None:
     """Re-ask the fire gate later: an unreadable store has no completion to wake it.
 
@@ -7229,7 +7272,17 @@ def _arm_synthesis_recheck(state: DashboardState, slot: _ChatSlot) -> None:
             _arm_synthesis_recheck(state, slot)
         elif verdict == SYNTHESIS_CLEAR and _still_wanted():
             # Re-read after the store read: the tab may have started closing.
-            _launch_synthesis(state, slot)
+            if not _drop_single_turn_synthesis(slot):
+                _launch_synthesis(state, slot)
+                return
+            # The cycle's chat_done went out with the arm still set, so it told
+            # the client the conversation continues. Hand the floor back now,
+            # unless a turn took it during the payload's read: that turn ends
+            # its own cycle.
+            state.push_slots_update()
+            payload = await chat_done_payload(state, slot)
+            if slot.task is None and not slot.turn_running:
+                await _send_chat_done(state, slot, payload=payload)
 
     def _fire() -> None:
         task = asyncio.ensure_future(_recheck())
@@ -7283,7 +7336,7 @@ async def _finish_queue_cycle(
         # Running, delivering, pending in memory, or queued in the store: the
         # one fire-gate read (`synthesis_fire_verdict`).
         verdict = await synthesis_fire_verdict(state, slot)
-        will_synthesize = verdict == SYNTHESIS_CLEAR
+        will_synthesize = verdict == SYNTHESIS_CLEAR and not _drop_single_turn_synthesis(slot)
         if verdict == SYNTHESIS_UNKNOWN:
             _arm_synthesis_recheck(state, slot)
         if not will_synthesize and drain and slot._queue and not slot._last_turn_auth_required:

@@ -2191,6 +2191,24 @@ per-sub-agent completion note. Dashboard chat only.
   clears the arm once the delivery guards pass, immediately before starting one
   timeout-bounded `_run_chat` turn with `SUBAGENT_SYNTHESIS_PROMPT`; a signed-out
   CLI surfaces as an `AcpAuthRequired` error card from that turn.
+- **One-turn batch** — the gateway counts each completion it queues or launches
+  into the slot (`slot._synthesis_completion_turns`; a wave digest is one). When
+  the fire gate answers `clear` and the count is exactly 1, that one turn already
+  reported the whole batch: `_drop_single_turn_synthesis` consumes the arm and
+  the cycle ends as an ordinary one, on the turn-end path and on the outage
+  re-check alike. A drop on the re-check sends the turn's final `chat_done`
+  again, since the first one went out while the arm was still set. Any other
+  count fires as before. The count resets when the synthesis runs or is
+  dropped, and when a drained user message disarms an armed synthesis while
+  the fire gate answers `clear`: the drain (`_start_next_queued_turn`) asks the
+  same `synthesis_fire_verdict`, so no child of the batch is running,
+  delivering, pending in memory or queued in the store. That read is the
+  drain's one suspension, taken while the synthesis is armed before any queue
+  decision, so each decision stays atomic with the dequeue and the dispatch;
+  a completion that takes an idle slot's floor during the read leaves the
+  entry queued for that turn's own drain. A `held` or `unknown` answer, as for
+  a user message drained while a child is still out, leaves the count alone,
+  so that batch keeps its synthesis.
 - **Per-result turns kept** — each completion is still processed in its own turn
   (no raw buffering) to avoid a context-window blowup; the synthesis works over
   the already-condensed per-result turns.

@@ -2750,6 +2750,167 @@ class TestStartNextQueuedTurn:
         assert contents.index("held") < roles.index("user")
         assert slot._deferred_notes == []
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "children, ends_batch",
+        [
+            ({}, True),
+            ({"running": [{"id": "b2"}]}, False),
+            ({"in_memory": True}, False),
+            ({"delivering": 1}, False),
+            ({"unreadable": True}, False),
+            ({"probe_raises": True}, False),
+            ({"queued_in_store": 1}, False),
+            ({"store_unreadable": True}, False),
+        ],
+        ids=[
+            "settled",
+            "running",
+            "pending-in-memory",
+            "delivering",
+            "unreadable",
+            "probe-raises",
+            "queued-in-store",
+            "store-unreadable",
+        ],
+    )
+    async def test_a_user_message_ends_the_batch_only_when_nothing_is_out(
+        self, tmp_path, children, ends_batch
+    ):
+        """The drained user message disarms the synthesis either way. It clears
+        the batch's turn count only when the fire gate answers clear, so no
+        child of the batch is still out: clearing a live batch's count loses
+        its synthesis, while keeping a stale one costs at most one extra
+        synthesis. A store nobody could read keeps it too."""
+        state, slot = _state(tmp_path), _slot()
+        slot._pending_synthesis = True
+        slot._synthesis_completion_turns = 2
+        slot._subagent_deliveries_inflight = children.get("delivering", 0)
+        subs = _children(
+            running=children.get("running", ()),
+            in_memory=children.get("in_memory", False),
+            # A gate-deferred child the store alone holds. The manager has
+            # published no depth for it (its table stays empty), so only the
+            # fire gate's store read sees it. None is a store nobody could read.
+            queued=(
+                None if children.get("store_unreadable") else children.get("queued_in_store", 0)
+            ),
+        )
+        if children.get("unreadable"):
+            subs.running_agents_for = MagicMock(return_value=None)
+        if children.get("probe_raises"):
+            subs.has_in_memory_pending_work_for = MagicMock(side_effect=RuntimeError("gone"))
+        state.subagents = subs
+        qid = slot.queue_append("a user message")
+
+        with (
+            patch.object(chat_runner, "spawn_guarded_turn", return_value=MagicMock()),
+            patch.object(chat_runner, "_run_chat", new=MagicMock(return_value=MagicMock())),
+        ):
+            started = await chat_runner._start_next_queued_turn(
+                state, slot, allow_user_during_subagents=True, required_queue_id=qid
+            )
+
+        assert started is True
+        assert slot._pending_synthesis is False, "the user takes over, as before"
+        assert slot._synthesis_completion_turns == (0 if ends_batch else 2)
+
+    @pytest.mark.asyncio
+    async def test_the_batch_verdict_is_read_before_the_dequeue(self, tmp_path):
+        """The fire gate's store read is the drain's one suspension, and it
+        sits ahead of every queue decision: the gate sees the message still
+        queued and no turn on the slot, and from the dequeue to the dispatch no
+        other coroutine can observe the entry gone with the floor still free."""
+        state, slot = _state(tmp_path), _slot()
+        slot._pending_synthesis = True
+        slot._synthesis_completion_turns = 2
+        state.subagents = _children()
+        qid = slot.queue_append("a user message")
+        seen: list = []
+        hazards: list = []
+        drained = asyncio.Event()
+
+        async def _verdict(_state, _slot):
+            seen.append(([item["id"] for item in _slot._queue], _slot.task))
+            await asyncio.sleep(0)  # a real suspension, as the store read is
+            return chat_runner.SYNTHESIS_CLEAR
+
+        async def _probe():
+            # Runs on every loop iteration the drain yields: "dequeued but not
+            # yet dispatched" must never be visible to it.
+            while not drained.is_set():
+                if not slot._queue and slot.task is None:
+                    hazards.append(True)
+                await asyncio.sleep(0)
+
+        probe = asyncio.ensure_future(_probe())
+        with (
+            patch.object(chat_runner, "synthesis_fire_verdict", new=_verdict),
+            patch.object(chat_runner, "spawn_guarded_turn", return_value=MagicMock()) as spawn,
+            patch.object(chat_runner, "_run_chat", new=MagicMock(return_value=MagicMock())),
+        ):
+            try:
+                started = await chat_runner._start_next_queued_turn(state, slot)
+            finally:
+                drained.set()
+        await probe
+
+        assert started is True
+        assert seen == [([qid], None)], "read with the message still queued, on a free slot"
+        assert hazards == []
+        assert spawn.call_count == 1
+        assert slot._synthesis_completion_turns == 0
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_takes_the_floor_during_the_read_keeps_the_entry_queued(
+        self, tmp_path
+    ):
+        """A sub-agent completion that reaches an idle slot inside the store
+        read launches its own turn without a lock, so the drain must not
+        dispatch a second one beside it: the entry stays queued for that turn's
+        own drain, and the arm and its count are left as they were."""
+        state, slot = _state(tmp_path), _slot()
+        slot._pending_synthesis = True
+        slot._synthesis_completion_turns = 2
+        state.subagents = _children()
+        qid = slot.queue_append("a user message")
+        taken = asyncio.get_running_loop().create_future()
+
+        async def _verdict(_state, _slot):
+            _slot.task = taken  # a completion's turn claimed the idle slot
+            return chat_runner.SYNTHESIS_CLEAR
+
+        with (
+            patch.object(chat_runner, "synthesis_fire_verdict", new=_verdict),
+            patch.object(chat_runner, "spawn_guarded_turn", return_value=MagicMock()) as spawn,
+            patch.object(chat_runner, "_run_chat", new=MagicMock(return_value=MagicMock())),
+        ):
+            started = await chat_runner._start_next_queued_turn(state, slot)
+        taken.cancel()
+
+        assert started is False
+        spawn.assert_not_called()
+        assert [item["id"] for item in slot._queue] == [qid]
+        assert slot.task is taken
+        assert slot._pending_synthesis is True
+        assert slot._synthesis_completion_turns == 2
+
+    @pytest.mark.asyncio
+    async def test_an_unarmed_drain_reads_no_store(self, tmp_path):
+        """Only an armed synthesis's disarm needs the verdict, so an ordinary
+        drain costs no store read."""
+        state, slot = _state(tmp_path), _slot()
+        state.subagents = _children()
+        slot.queue_append("a user message")
+
+        with (
+            patch.object(chat_runner, "spawn_guarded_turn", return_value=MagicMock()),
+            patch.object(chat_runner, "_run_chat", new=MagicMock(return_value=MagicMock())),
+        ):
+            assert await chat_runner._start_next_queued_turn(state, slot) is True
+
+        state.subagents.queued_count_or_none_async.assert_not_awaited()
+
 
 def _no_children() -> MagicMock:
     """A registry with no child attached: none running and none queued.
@@ -2765,12 +2926,15 @@ def _children(*, running=(), queued: int | None = 0, in_memory: bool = False) ->
     """A registry double for the synthesis fire gate with every probe set
     explicitly: a bare MagicMock answers an unset probe with a truthy mock
     (``int(MagicMock()) == 1``), which reads as a queued child. *queued*
-    ``None`` is a store nobody could read."""
+    ``None`` is a store nobody could read. The manager's published depth
+    table, which the slots push reads, stays empty: no synthesis check reads
+    it, so a queued child is *queued* alone."""
     return MagicMock(
         running_agents_for=MagicMock(return_value=list(running)),
         queued_count_for_async=AsyncMock(return_value=queued or 0),
         queued_count_or_none_async=AsyncMock(return_value=queued),
         has_in_memory_pending_work_for=MagicMock(return_value=in_memory),
+        published_queued_depths=MagicMock(return_value={}),
     )
 
 
@@ -2825,6 +2989,30 @@ class TestRunPendingSynthesis:
         state.subagents.queued_count_or_none_async.assert_not_awaited()
         state.subagents.running_agents_for.assert_not_called()
         assert slot._pending_synthesis is False
+
+    @pytest.mark.asyncio
+    async def test_running_the_synthesis_ends_its_batch(self, tmp_path):
+        """The consumed arm takes the batch's turn count with it, so the next
+        lone completion is a batch of its own."""
+        state, slot = _state(tmp_path), _slot()
+        slot._pending_synthesis = True
+        slot._synthesis_completion_turns = 2
+        state.subagents = _children()
+
+        async def _ok():
+            return None
+
+        def _capture(_state, _slot, coro, *a, **kw):
+            coro.close()
+            return asyncio.ensure_future(_ok())
+
+        with (
+            patch.object(chat_runner, "spawn_guarded_turn", side_effect=_capture),
+            patch.object(chat_runner, "_run_chat", new=MagicMock(return_value=MagicMock())),
+        ):
+            await chat_runner._run_pending_synthesis(state, slot)
+
+        assert slot._synthesis_completion_turns == 0
 
     @pytest.mark.asyncio
     async def test_synthesis_timeout_is_swallowed(self, tmp_path):
@@ -3093,6 +3281,73 @@ class TestFinishQueueCycle:
         assert slot._synthesis_inflight is True
         if slot.task is not None:
             slot.task.cancel()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("outage", [False, True], ids=["turn-end", "outage-re-check"])
+    async def test_a_batch_reported_in_one_turn_drops_the_synthesis(self, tmp_path, outage):
+        """One completion turn already carried every result: the cycle ends as
+        an ordinary one and the arm is consumed, on the turn-end path and on
+        the outage re-check alike."""
+        state, slot = _state(tmp_path), _slot()
+        state._slots[slot.key] = slot
+        slot._pending_synthesis = True
+        slot._synthesis_completion_turns = 1
+        subs = _children()
+        answers = iter([None, 0] if outage else [0])
+        subs.queued_count_or_none_async = AsyncMock(side_effect=lambda _k: next(answers))
+        state.subagents = subs
+
+        with (
+            patch.object(chat_runner, "_SYNTHESIS_RECHECK_SECS", 0.01),
+            patch.object(chat_runner, "_run_pending_synthesis", new=AsyncMock()) as synth,
+        ):
+            await chat_runner._finish_queue_cycle(state, slot)
+            for _ in range(100):
+                if not slot._pending_synthesis:
+                    break
+                await asyncio.sleep(0.01)
+
+        synth.assert_not_called()
+        assert slot._pending_synthesis is False
+        assert slot._synthesis_completion_turns == 0
+        assert slot.messages[-1]["role"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_a_drop_on_the_outage_re_check_sends_the_final_chat_done(self, tmp_path):
+        """The turn's own chat_done went out while the store was unreadable, so
+        it said the conversation continues. Once the re-check drops the arm, a
+        chat_done that hands the floor back must follow, or the reply never
+        gets its turn-done chime and toast."""
+        state, slot = _state(tmp_path), _slot()
+        state._slots[slot.key] = slot
+        slot._pending_synthesis = True
+        slot._synthesis_completion_turns = 1
+        subs = _children()
+        answers = iter([None, 0])
+        subs.queued_count_or_none_async = AsyncMock(side_effect=lambda _k: next(answers))
+        state.subagents = subs
+
+        def _continuing() -> list:
+            return [
+                c.args[1]["continuing"]
+                for c in state.broadcast_ws.call_args_list
+                if c.args and c.args[0] == "chat_done"
+            ]
+
+        with (
+            patch.object(chat_runner, "_SYNTHESIS_RECHECK_SECS", 0.01),
+            patch.object(chat_runner, "_run_pending_synthesis", new=AsyncMock()) as synth,
+        ):
+            await chat_runner._finish_queue_cycle(state, slot)
+            assert _continuing() == [True], "the arm was still set at the turn's end"
+            for _ in range(100):
+                if len(_continuing()) > 1:
+                    break
+                await asyncio.sleep(0.01)
+
+        synth.assert_not_called()
+        assert slot._pending_synthesis is False
+        assert _continuing() == [True, False]
 
     @pytest.mark.asyncio
     async def test_closing_the_slot_cancels_a_pending_re_check(self, tmp_path):
