@@ -550,6 +550,7 @@ from kiro_crew.recovery.ladder import (
     InfraError,
     default_ladder,
 )
+from kiro_crew.repeat_loop import RepeatLoopTracker
 from kiro_crew.safety_override import safety_override  # noqa: F401
 from kiro_crew.security import (
     StreamRedactor,
@@ -1083,6 +1084,23 @@ def _refined_tool_row_content(existing: str, new_title: str) -> str | None:
 #: skipping both. Sized to a pipe write with margin, far below the 60s approval
 #: reporting margin, and applied inside the helper so every caller inherits it.
 _STEER_NOTICE_BOUND_SECS = STEER_NOTICE_BOUND_SECS
+
+
+async def _steer_repeat_loop_notice(client: Any, notice: str) -> bool:
+    """Steer a repeat-loop notice into the running turn, best-effort and bounded.
+
+    Same capability gate and bound as :func:`_steer_policy_notice`, but the
+    notice is advice, not a deny correction: it never joins the turn's refusal
+    ledger, so an unconfirmed one cannot schedule a recovery continuation.
+    """
+    if not notice or not getattr(client, "supports_refusal_steer", False):
+        return False
+    try:
+        sent = await asyncio.wait_for(client.steer(notice), timeout=_STEER_NOTICE_BOUND_SECS)
+    except Exception:
+        logger.debug("repeat-loop steer failed", exc_info=True)
+        return False
+    return sent is not False
 
 
 async def _steer_policy_notice(
@@ -9176,6 +9194,8 @@ async def _run_chat(
     # deny sites — a path added later cannot forget to increment a counter.
     _refusal_notices: list[str] = []
     _refusal_notices_settled = 0
+    # Same call, same result, again and again: told once per call (repeat_loop).
+    _repeat_loop = RepeatLoopTracker()
     # Whether the current denied batch's cascade already steered its one
     # cause-specific notice. One notice covers the whole cascaded remainder, so
     # this stops the second and later members from repeating it; re-armed each
@@ -11692,6 +11712,9 @@ async def _run_chat(
                 _turn_thought = True
             elif event.kind == EVENT_TOOL_CALL:
                 _turn_tool_calls += 1
+                _repeat_loop.note_call(
+                    event.tool_call_id, event.tool_name or "", event.tool_input, event.title
+                )
                 if (
                     event.is_shell
                     and event.tool_call_id
@@ -11941,6 +11964,10 @@ async def _run_chat(
                 # user sees the actual command rather than the stub.
                 if not event.tool_call_id:
                     continue
+                if event.tool_input:
+                    _repeat_loop.note_call(
+                        event.tool_call_id, event.tool_name or "", event.tool_input, event.title
+                    )
                 _dir_refresh = _pending_dir_for_digest.get(event.tool_call_id, "")
                 if not _dir_refresh:
                     # claude-agent-acp's initial tool_call carries a generic title
@@ -12142,6 +12169,15 @@ async def _run_chat(
                 # stream actually reported. `stop_reason` on this event describes
                 # the turn, not the tool, so it is not used here.
                 _tool_terminal = event.tool_final or (event.tool_status in TERMINAL_TOOL_STATUSES)
+                _loop_notice = _repeat_loop.note_result(
+                    event.tool_call_id,
+                    status=event.tool_status,
+                    output=event.tool_output,
+                    output_digest=event.tool_output_digest,
+                    terminal=_tool_terminal,
+                )
+                if _loop_notice:
+                    await _steer_repeat_loop_notice(client, _redact_tool_field(_loop_notice))
                 if event.tool_output_credentials and _tcid_identifies:
                     # The call's own input (already redacted) names the source;
                     # the fingerprints say which credentials it produced. An id

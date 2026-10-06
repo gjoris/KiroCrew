@@ -12,6 +12,8 @@ A rejected tool call is reported to you as a generic failure — on kiro-cli
 literally `User denied tool execution`. That string is wrong about *who*
 refused. Kiro Crew's own gate produces most refusals, and the real reason
 arrives separately as a `[Kiro Crew host notice]` message in the same turn.
+A host notice that says you made the same tool call several times is not a
+refusal: nothing was blocked. It is advice to change strategy.
 
 So:
 
