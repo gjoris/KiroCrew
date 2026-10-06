@@ -63,6 +63,7 @@ CANONICAL: dict[str, dict] = {
     },
     "session/class": {"memory": "persistent", "app": "secretary", "channel": True},
     "session/closed": {"reason": "reset"},
+    "session/created": {"slot": "chat-12", "agent": "kirocrew-worker"},
     "session/adopted": {
         "parent": {"slot": "chat-9", "sid": "acp-sess-adopter"},
         "previous_parent": {"slot": "chat-3", "sid": "acp-sess-former"},
@@ -289,7 +290,13 @@ def test_every_type_written_today_is_declared_and_nothing_else_is():
     # Subagents panel's durable half is a fold of this log, so a card the user cleared
     # has to be recorded here. It was held in a registry keyed on the run's folder, and
     # when that folder was reclaimed first the dismissed card came back.
-    assert len(SESSION_ENTRY_TYPES) == 35
+    #
+    # The one past THAT is ``session/created``, the session tree's third type and the
+    # only one written on the CREATOR rather than on the session that moved. It states a
+    # child was minted before that child has a log of its own, which is the window the
+    # other two cannot cover: ``session/opened.parent`` needs the child's ACP session,
+    # and that arrives a minute or more after the mint.
+    assert len(SESSION_ENTRY_TYPES) == 36
     # Nine types the vocabulary owns that nothing writes. Declaring one would state
     # a shape no writer produces, and the first emitter to land would have to
     # satisfy a contract written without it. They pass through undeclared instead.

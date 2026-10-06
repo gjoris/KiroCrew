@@ -648,6 +648,55 @@ _SESSION_TYPES: tuple[EntryType, ...] = (
         ),
     ),
     EntryType(
+        "session/created",
+        "This session minted a child session, which has not opened a log of its own yet.",
+        (
+            Field(
+                "slot",
+                JSON_STRING,
+                required=True,
+                note=(
+                    "The child's slot key, as session_create minted it. Required: the "
+                    "row is keyed by it, so an entry naming no child addresses nothing."
+                ),
+            ),
+            Field(
+                "agent",
+                JSON_STRING,
+                note=(
+                    "The agent the child was dispatched as, for a reader of this log. "
+                    "No fold reads it: a tree needs the edge and nothing else, so "
+                    "retaining it would hold a string per pending child for nothing. "
+                    "Absent when the child was created with no agent named."
+                ),
+            ),
+        ),
+        note=(
+            "Written on the CREATOR, which is the opposite side from every other tree "
+            "entry -- and that is the whole reason it exists. session/opened.parent is "
+            "written by the child, and the child cannot write it until it has an ACP "
+            "session to key a log by, which it gets on its first turn. Runtime and MCP "
+            "startup make that over a minute in practice, and for all of it the store "
+            "holds no record of the edge at all, so a sidebar shows a freshly "
+            "dispatched worker at the top level. The creator is live and already has a "
+            "log, so it states the fact at mint.\n\n"
+            "PROVISIONAL, and it replaces nothing: the child still writes its own "
+            "session/opened exactly as before, and that entry is the authority. This "
+            "one is read only for a live session the tree holds no node for, and is "
+            "passed over the moment that node exists -- including when the node "
+            "deliberately has no parent, which is what session/released means and "
+            "what re-reading a creation over it would silently undo.\n\n"
+            "It makes no node and is absent from the fold, so nothing that DECIDES on "
+            "an edge sees it: the adoption cycle guard and the ownership check that "
+            "archived-session revival turns on both keep asking the child's own "
+            "append-only entry.\n\n"
+            "Written only when the gateway minted the child in THIS process and holds "
+            "the creator's own session id -- the same in-process witness "
+            "session/opened.parent requires. A session a person opened in their own "
+            "tab has no creator and records nothing."
+        ),
+    ),
+    EntryType(
         "session/adopted",
         "Another session took this one over, so it now hangs under that session.",
         (

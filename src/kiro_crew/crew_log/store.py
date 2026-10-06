@@ -1941,15 +1941,18 @@ def read_last_tree_edge(segment: Path) -> "Entry | None":
 
 
 def tree_edge_scan_identity(directory: Path) -> "tuple[int, int, int, int] | None":
-    """What must be unchanged for an earlier COMPLETE tree-edge read of this unit to
-    still be its answer, or ``None`` when the unit has no segments.
+    """What must be unchanged for an earlier COMPLETE tree read of this unit to still
+    be its answer, or ``None`` when the unit has no segments.
 
-    :func:`find_last_tree_edge` is the only honest read for a rebuild and it is
-    proportional to the unit's whole log, because a unit that records no decision is
-    only proved to record none by reading all of it. Paying that on every process start
-    for every unit is what this exists to avoid: the verdict is a pure function of the
-    bytes, so it can be cached across boots as long as something can say the bytes are
-    the same ones.
+    Covers BOTH whole-log reads, because they are gated together and a reader that
+    skipped one while re-paying the other would learn nothing from the skip:
+    :func:`find_last_tree_edge` for the unit's newest decision, and
+    :func:`find_tree_created` for every child it minted. Each is proportional to the
+    unit's whole log -- a unit that records no decision is only proved to record none
+    by reading all of it, and a creation sits mid-log so there is no end to stop at.
+    Paying that on every process start for every unit is what this exists to avoid:
+    both verdicts are pure functions of the bytes, so they can be cached across boots
+    as long as something can say the bytes are the same ones.
 
     Four numbers, each closing a different way the answer could go stale:
 
@@ -1964,7 +1967,9 @@ def tree_edge_scan_identity(directory: Path) -> "tuple[int, int, int, int] | Non
     point is to be cheaper than reading the bytes. It is a staleness check, not proof of
     identity -- so it is used only to skip re-deriving a NEGATIVE verdict, where being
     wrong costs a decision that is re-read on the next change, and never to admit an edge
-    that no read produced.
+    that no read produced. "Negative" means both halves at once: a cached entry asserts
+    that these bytes hold no decision and name no minted child whose own log is still
+    absent, so a caller may skip the reads only while it holds neither for the unit.
 
     Raises what the stats raise. A caller that cannot get an identity must do the read.
     """
@@ -2039,6 +2044,105 @@ def find_last_tree_edge(directory: Path) -> "Entry | None":
         if entry is not None:
             return entry
     return None
+
+
+#: The one entry type a CREATOR writes about a child it has just minted. Its own
+#: set rather than a member of :data:`_TREE_EDGE_TYPES`, because the two are read
+#: in opposite shapes: a decision is ONE answer per unit and the newest wins, while
+#: a creator writes one of these per child and every one of them is wanted. Folding
+#: them into that set would make ``find_last_tree_edge`` answer with a creation and
+#: ``edge_record`` read it as a malformed adoption. Deliberately not in
+#: :data:`_LIFECYCLE_TYPES` either, for the reason the decisions are not: that set
+#: authorizes retention's delete, so a creation at the end of a log would keep that
+#: log forever.
+_TREE_CREATED_TYPES = frozenset({"session/created"})
+
+
+def _iter_entries_of_types(segment: Path, types: "frozenset[str]") -> "Iterator[Entry]":
+    """Every entry of *types* in *segment*, oldest first, YIELDED one at a time.
+
+    The collecting counterpart of :func:`_scan_whole_for_types`, and it reads the
+    WHOLE file unconditionally where that one skips a file the tail window already
+    covered. The difference is the question: that one wants the newest match, which a
+    tail read has already found, while this one wants ALL of them and a window can
+    only ever hold the last few.
+
+    A generator rather than a list, so the BOUND belongs to the caller. The caller is
+    the one that knows which end of the sequence it wants to keep, and a function
+    truncating here could only ever hand back the OLDEST rows -- which for a creator
+    are the children that opened logs of their own long ago, rather than the ones
+    still waiting.
+
+    Raises ``OSError`` or ``ValueError`` and nothing else, the contract every
+    tree-read caller in this module guards. Byte damage from the framing reader
+    becomes ``ValueError`` for the reason :func:`_scan_whole_for_types` converts it:
+    the reader ABORTS on it, so everything past the damage is unseen, and a caller
+    that guards only those two would otherwise have the raise escape it entirely.
+    """
+    if segment.stat().st_size == 0:
+        return
+    with open(segment, "rb") as handle:
+        try:
+            for raw in strict_raw_records(handle, segment, cap=MAX_ENTRY_BYTES):
+                parsed = _parses_to_object(raw.strip())
+                if parsed is None:
+                    continue
+                entry = Entry.from_dict(parsed)
+                if entry is not None and entry.type in types:
+                    yield entry
+        except UnreadableRecord as exc:
+            raise ValueError(f"crew log segment {segment.name} holds an unreadable record") from exc
+
+
+def find_tree_created(directory: Path, limit: int) -> "tuple[list[Entry], bool]":
+    """The NEWEST *limit* ``session/created`` entries in the whole of *directory*'s
+    surviving log, oldest first, and whether an older one was dropped to fit.
+
+    A creation is written when a session MINTS a child, and the creator then goes on
+    appending turns -- so unlike a decision it sits in the MIDDLE of a log rather than
+    at its end, and no bounded tail read finds it. There is also no newest-wins
+    shortcut to stop the walk early: a creator with ten children wrote ten of these,
+    possibly across ten segments, and all ten are the answer. So every segment is
+    read, oldest first, which is also the order a reader wants them in.
+
+    WHICH END survives the bound is the point rather than a detail. A row matters only
+    until its child opens a log of its own, so a creator's oldest rows are its
+    long-settled children and its newest are the ones still waiting -- the children a
+    reader is actually looking for. Keeping the oldest would make a prolific creator's
+    freshly dispatched workers precisely the rows that go missing, which is the case
+    this read exists to serve.
+
+    The second value says a row was DROPPED, so a caller knows its set is a floor. It
+    is set when one is actually evicted rather than when the count reaches the bound,
+    so a log holding exactly *limit* rows reads as complete.
+
+    Raises what the reads raise, as ``OSError`` or ``ValueError``, for the reason
+    :func:`find_last_tree_edge` does: "this unit created nothing" and "its bytes were
+    not seen" are different answers and only the first may be cached.
+    """
+    # NOT guarded, for the reason the listing in ``find_last_tree_edge`` is not: a
+    # listing that fails has established nothing about this unit, and the caller
+    # CACHES a negative verdict -- so a moment's fault must not become the standing
+    # answer that this creator minted nobody.
+    found = [
+        (first, child)
+        for child in directory.iterdir()
+        if (first := _segment_first_seq(child)) is not None
+    ]
+    found.sort(key=lambda pair: pair[0])
+    if limit <= 0:
+        return [], False
+    # A sliding window over the whole log: the generator holds one entry at a time and
+    # this holds the newest ``limit`` of them, so a creator with a very long history
+    # costs the read and not the memory.
+    kept: "deque[Entry]" = deque(maxlen=limit)
+    dropped = False
+    for _first, segment in found:
+        for entry in _iter_entries_of_types(segment, _TREE_CREATED_TYPES):
+            if len(kept) == limit:
+                dropped = True
+            kept.append(entry)
+    return list(kept), dropped
 
 
 def _scan_whole_for_types(segment: Path, types: "frozenset[str]") -> "Entry | None":

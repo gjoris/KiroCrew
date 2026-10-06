@@ -91,6 +91,7 @@ from kiro_crew.crew_log.errors import CrewLogError
 from kiro_crew.crew_log.schema import KIND_SESSION, Entry
 from kiro_crew.crew_log.store import (
     find_last_tree_edge,
+    find_tree_created,
     newest_segment,
     oldest_segment,
     read_head,
@@ -116,6 +117,35 @@ TYPE_RELEASED: Final[str] = "session/released"
 
 #: Both of them, for a reader deciding whether an entry carries an edge at all.
 EDGE_TYPES: Final[frozenset[str]] = frozenset({TYPE_ADOPTED, TYPE_RELEASED})
+
+#: The entry a CREATOR writes about a child it has just minted, on the creator's own
+#: log -- the other side from every type above, and the reason it exists.
+#:
+#: ``session/opened.parent`` is written by the CHILD, and the child cannot write it
+#: until it has an ACP session to key a log by, which it gets on its first turn. So
+#: for the minute or more between ``session_create`` and that turn the store holds no
+#: record of the edge at all, and a sidebar shows a newly dispatched worker at the top
+#: level. The creator, meanwhile, is live and already has a log: it can state the fact
+#: at mint, which is what this type is.
+#:
+#: It is a PROVISIONAL reading and never a node. The child's own ``session/opened`` is
+#: still written exactly as before and still the authority; this one is consulted only
+#: for a live row the tree holds no node for, and is passed over the moment that node
+#: exists -- including when the node deliberately has no parent, which is what a
+#: release means and what re-reading a creation would silently undo.
+TYPE_CREATED: Final[str] = "session/created"
+
+#: How many ``session/created`` rows ONE unit's log contributes to a fold.
+#:
+#: Separate from :data:`TREE_UNIT_CAP`, which bounds how many UNITS a scan admits:
+#: this bounds how many rows a single unit may add, and the two are different risks.
+#: A long-lived conductor dispatches over its whole life while a row stays useful only
+#: until that child's own log lands, so the rows past the live fan-out are inert
+#: weight -- and ``MAX_SLOTS_PER_CREATOR`` (50) is what a creator may hold at once.
+#: This leaves several times that in headroom and still refuses to let one log's
+#: history decide how much memory the fold holds. A unit that reaches it is reported as
+#: incomplete rather than silently truncated.
+TREE_CREATED_PER_UNIT_CAP: Final[int] = 256
 
 #: How many session-log units one scan ADMITS -- probes, lists, reads, caches
 #: and folds. The ONE bound on everything the scanner does and holds, and every
@@ -267,6 +297,35 @@ class EdgeRecord:
 
 
 @dataclass(frozen=True)
+class CreatedRecord:
+    """One child slot a creator's log says it MINTED, and the log that said so.
+
+    The provisional half of the tree, and it is kept in its own record type rather
+    than as an :class:`EdgeRecord` with a flag because a reader must never be able to
+    fold the two by accident. An edge is evidence about where a slot hangs; this is
+    evidence that a slot was asked for and has not spoken yet.
+
+    ``child_slot`` is the slot ``session_create`` minted. ``source_sid`` is the log the
+    statement was read from, which is also how the creator's own SLOT is resolved: the
+    unit's header already states it, so writing a second copy into the entry would
+    invite a reader to trust the copy over the header.
+
+    ``source_sid`` and ``seq`` order two statements about one child exactly as they
+    order two decisions about one slot (:func:`created_supersedes`), and for the same
+    reason: a slot key is reusable, so the same child name can be minted twice by two
+    different creators, and the newer statement is the one that holds.
+    """
+
+    child_slot: str
+    source_sid: str
+    at: int
+    #: Position in the citing log. Defaults to 0 so a hand-built record in a test or a
+    #: checkpoint written without it still compares -- 0 loses to any real entry from
+    #: the same log, which is the safe direction.
+    seq: int = 0
+
+
+@dataclass(frozen=True)
 class TreeNode:
     """One slot in the tree.
 
@@ -317,6 +376,11 @@ class TreeReading:
     #: why ``nodes`` is the value to read rather than these: a consumer cannot tell a
     #: scan that found no adoptions from one that never looked, and does not need to.
     edges: tuple[EdgeRecord, ...] = ()
+    #: Every child a scanned unit says it MINTED, and whose own log has not landed.
+    #: Empty when the caller did not ask for them, like ``edges``. They make no node
+    #: and are absent from ``nodes``: they are the provisional reading a consumer falls
+    #: back to for a live row the fold holds nothing for. See :data:`TYPE_CREATED`.
+    created: tuple[CreatedRecord, ...] = ()
     #: The units whose own bytes faulted after their head proved itself, so the scan
     #: holds a record for them and an unproven decision. Unlike a unit with no usable
     #: head, which is simply absent from ``records``, these are present and cannot be
@@ -408,6 +472,59 @@ def latest_edges(
         held = newest.get(edge.slot)
         if held is None or edge_supersedes(edge, held, log_rank):
             newest[edge.slot] = edge
+    return newest
+
+
+def created_supersedes(
+    candidate: CreatedRecord,
+    held: CreatedRecord,
+    log_rank: Mapping[str, tuple[int, int, str]] | None = None,
+) -> bool:
+    """Whether *candidate* is the LATER statement about one child slot. Pure.
+
+    The same three-case comparison :func:`edge_supersedes` makes, over the citing log
+    instead of the moved slot, and it is a separate function rather than a shared one
+    because the two records key their citing log under different names -- a shared
+    comparison would have to reach for an attribute by string, which is how the two
+    would silently stop agreeing.
+
+    Same log: ``seq``, which the writer assigns and only increases, so a clock that
+    stepped backward between two mints cannot invert them. Different logs: the newer
+    LOG wins, by the ranking :func:`log_rank_of` derives from the succession chain the
+    store itself wrote. Neither available: ``(at, source_sid)``, the weakest answer
+    and confined to the case where nothing better exists.
+
+    Ties answer ``False``, so replaying a statement already held is not a change.
+    """
+    if candidate.source_sid == held.source_sid:
+        return candidate.seq > held.seq
+    if log_rank is not None:
+        candidate_rank = log_rank.get(candidate.source_sid)
+        held_rank = log_rank.get(held.source_sid)
+        if candidate_rank is not None and held_rank is not None:
+            return candidate_rank > held_rank
+    return (candidate.at, candidate.source_sid) > (held.at, held.source_sid)
+
+
+def latest_created(
+    created: Iterable[CreatedRecord], log_rank: Mapping[str, tuple[int, int, str]] | None = None
+) -> dict[str, CreatedRecord]:
+    """The newest statement per CHILD slot. Pure, and order-independent.
+
+    Order-independence for the reason :func:`latest_edges` needs it: these records
+    reach a fold from a checkpoint, from a tail replay and from the writer, in
+    whatever order those arrive. A slot key is reusable, so a tab opened under the
+    name of a closed worker can have two creators on record, and taking the last
+    arrival would hand the new one the old one's lead.
+    """
+    newest: dict[str, CreatedRecord] = {}
+    for record in created:
+        if not record.child_slot:
+            # Keyed by the child slot; a statement naming no child addresses nothing.
+            continue
+        held = newest.get(record.child_slot)
+        if held is None or created_supersedes(record, held, log_rank):
+            newest[record.child_slot] = record
     return newest
 
 
@@ -1121,6 +1238,51 @@ def edge_record(slot: str, sid: str, entry: Entry | None) -> EdgeRecord | None:
     )
 
 
+def created_records(source_sid: str, entries: "Iterable[Entry]") -> "tuple[CreatedRecord, ...]":
+    """The creations *entries* contribute for the log identified by *source_sid*.
+
+    Plural where :func:`edge_record` is singular, which is the whole difference
+    between the two records: a unit has one newest decision and as many creations as
+    it made children. Entries this cannot read are DROPPED rather than failing the
+    batch -- one unreadable creation costs that child its provisional row until its
+    own log lands, while refusing the batch would cost every sibling the same for one
+    bad line.
+
+    *source_sid* is passed in rather than re-derived, for the reason
+    :func:`edge_record` takes its identity as an argument: every caller already holds
+    it from a header it proved, and re-reading that header here would double the reads
+    on the one path where reads are the cost. It is BOUNDED anyway -- this function is
+    a door into a fold's state, and a door is only as safe as its least careful
+    caller.
+    """
+    if not _bounded(source_sid, MAX_ACP_SESSION_ID_LEN):
+        return ()
+    out: list[CreatedRecord] = []
+    for entry in entries:
+        if entry is None or entry.type != TYPE_CREATED:
+            continue
+        data = entry.data if isinstance(entry.data, dict) else {}
+        child_slot = data.get("slot")
+        # REFUSED rather than truncated, the rule every door into this state keeps: a
+        # truncated slot key is a DIFFERENT key, so it matches nothing or, worse,
+        # matches another session.
+        if not isinstance(child_slot, str) or not _bounded(child_slot, MAX_SHORT_STRING):
+            continue
+        at = entry.time
+        seq = entry.seq
+        out.append(
+            CreatedRecord(
+                child_slot=child_slot,
+                source_sid=source_sid,
+                at=at if isinstance(at, int) and not isinstance(at, bool) else 0,
+                # The store's own position for this line, which is what orders two
+                # statements in one log without consulting a clock.
+                seq=seq if isinstance(seq, int) and not isinstance(seq, bool) and seq > 0 else 0,
+            )
+        )
+    return tuple(out)
+
+
 def header_unreadable(segment: Path) -> bool:
     """Whether "no header" means the header could not be READ.
 
@@ -1179,6 +1341,30 @@ class _Head:
 
 
 @dataclass(frozen=True)
+class _Created:
+    """One unit's cached CREATIONS: the segment the identity was taken from, that
+    file's identity, its size when read, and every child the whole log named --
+    ``()`` for a creator that minted nobody, cached too, so a log with no creations
+    costs one ``stat`` rather than a whole-log read per scan.
+
+    ``size`` is compared for EQUALITY, like :class:`_Edge` and unlike :class:`_Head`.
+    A creation sits mid-log, so growth cannot move one that was already read -- but it
+    can ADD one, and this cache holds the complete set rather than a newest answer.
+    A segment that SHRANK is a different file on a recycled inode either way.
+
+    A read past :data:`TREE_CREATED_PER_UNIT_CAP` is reported in the log by the read
+    that filled this entry rather than carried here: nothing branches on it, so the
+    entry holds only what a scan serves.
+    """
+
+    segment: Path
+    dev: int
+    ino: int
+    size: int
+    records: tuple[CreatedRecord, ...]
+
+
+@dataclass(frozen=True)
 class _Edge:
     """One unit's cached DECISION: the segment its tail was read from, that file's
     identity, its size when read, and what the tail said -- ``None`` for a unit
@@ -1233,6 +1419,11 @@ class SessionTree:
         self._lock = threading.Lock()
         self._heads: dict[str, _Head] = {}
         self._edges: dict[str, _Edge] = {}
+        #: Per unit, the children its whole log says it minted. Read on the same
+        #: ``with_edges`` pass and cached on the same terms, because the two reads are
+        #: gated by one identity and a scan that skipped one while re-paying the other
+        #: would learn nothing from the skip.
+        self._created: dict[str, _Created] = {}
         self._over_cap = False
 
     @property
@@ -1257,9 +1448,10 @@ class SessionTree:
         *,
         with_edges: bool = False,
         faults: "_ScanFaults | None" = None,
-    ) -> tuple[list[OpenedRecord], list[EdgeRecord], bool, bool]:
-        """:meth:`records`, plus the later decisions when asked for, plus whether any
-        unit's bytes could not be READ, plus whether the population ran past the cap.
+    ) -> tuple[list[OpenedRecord], list[EdgeRecord], list[CreatedRecord], bool, bool]:
+        """:meth:`records`, plus the later decisions and the minted children when asked
+        for, plus whether any unit's bytes could not be READ, plus whether the
+        population ran past the cap.
 
         *preferred* names unit ids (the live sessions' ACP session ids) whose
         logs are admitted FIRST, whatever their place in the store's order: the
@@ -1283,6 +1475,13 @@ class SessionTree:
         replay, and not worth paying on a succession walk, which reads a slot's own
         chain and has no use for where that slot hangs.
 
+        The same flag turns on the CREATIONS pass, under one name rather than two
+        because the two are one answer: a caller that wants the tree wants both where
+        every slot hangs and which slots were asked for and have not spoken, and a
+        caller that wants neither (the succession walk) wants neither. Splitting them
+        would also split the identity that gates their reads, and a unit skipped for
+        one and re-read for the other pays the read anyway.
+
         The fault bit is accumulated HERE, inside the lock that did the reading,
         and returned rather than stored. One tree serves every reader in the
         process, so a bit left on the instance could be read by a second,
@@ -1290,6 +1489,7 @@ class SessionTree:
         """
         out: list[OpenedRecord] = []
         edges: list[EdgeRecord] = []
+        created: list[CreatedRecord] = []
         seen: set[str] = set()
         faulted = False
         with self._lock:
@@ -1337,13 +1537,106 @@ class SessionTree:
                         faults.sids.append(record.sid)
                     if edge is not None:
                         edges.append(edge)
+                    # Same gate as the decision, and for the same reason: a creation is
+                    # keyed by the CITING log, and the head record is where this scan
+                    # learned that log's id.
+                    #
+                    # Its gaps are LOGGED and reach no flag -- in particular never
+                    # ``faulted`` or the suspect list, which are what a reader deciding
+                    # on an edge refuses on: one prolific creator would otherwise refuse
+                    # every adoption on the gateway and void its own written citation.
+                    # A missing creation costs one pending child its nesting for a turn.
+                    created.extend(self._read_created(directory, record))
             # Evict what this scan did not admit: a unit that is gone, and one
             # that fell past the cap because the population grew in front of it.
             for gone in [name for name in self._heads if name not in seen]:
                 del self._heads[gone]
             for gone in [name for name in self._edges if name not in seen]:
                 del self._edges[gone]
-        return out, edges, faulted, over_cap
+            for gone in [name for name in self._created if name not in seen]:
+                del self._created[gone]
+        return out, edges, created, faulted, over_cap
+
+    def _read_created(self, directory: Path, head: OpenedRecord) -> "tuple[CreatedRecord, ...]":
+        """One unit's minted children, from the cache when its newest segment is
+        byte-identical to the one read. Caller holds the lock.
+
+        ONE value where the decision read returns two, and the difference is what is at
+        stake. A gap here -- a read that faulted, or a creator past
+        :data:`TREE_CREATED_PER_UNIT_CAP` whose older rows were dropped to fit -- costs
+        one pending child its nesting until its own first turn, which is the
+        pre-existing answer. So it is LOGGED and reaches no flag: in particular it may
+        not touch ``faulted`` or the suspect list, which are what a reader deciding on
+        an edge refuses on, because one prolific creator would then refuse every
+        adoption on the gateway and void its own written citation.
+
+        The rows it does return are each off the file, and past the bound they are the
+        NEWEST -- the children still waiting, rather than the ones that opened logs long
+        ago.
+
+        *head* is the record :meth:`_read` produced, which proved the header folds
+        back to this directory and is where the citing log's id comes from. So no
+        header is read here.
+
+        The read is the WHOLE log's and there is no window shortcut, for the reason
+        :func:`~kiro_crew.crew_log.store.find_tree_created` gives: a creation sits in
+        the middle of a log that goes on growing, and all of them are the answer
+        rather than the newest one. The cache is keyed on the newest segment's exact
+        size, so a unit nothing has appended to since the last scan costs one ``stat``.
+        """
+        name = directory.name
+        try:
+            segment = newest_segment(directory)
+        except OSError:
+            # The listing failed, so this scan has learned NOTHING about what this unit
+            # minted. The cached entry is left alone: dropping it would lose a child's
+            # provisional row over a transient error.
+            return self._created[name].records if name in self._created else ()
+        if segment is None:
+            # No surviving segment: absent or empty, which IS an answer -- nothing on
+            # disk names a minted child for this unit, so stale cached rows must not
+            # outlive it.
+            self._created.pop(name, None)
+            return ()
+        try:
+            stat = segment.stat()
+        except OSError:
+            return self._created[name].records if name in self._created else ()
+        cached = self._created.get(name)
+        if (
+            cached is not None
+            and cached.segment == segment
+            and cached.dev == stat.st_dev
+            and cached.ino == stat.st_ino
+            and cached.size == stat.st_size
+        ):
+            return cached.records
+        try:
+            entries, truncated = find_tree_created(directory, TREE_CREATED_PER_UNIT_CAP)
+        except (OSError, ValueError):
+            # The bytes were not seen, so there is no verdict to cache. ``ValueError``
+            # is in the tuple for the reason the decision read has it: byte damage
+            # aborts the framing reader, so everything past it is unseen.
+            logger.warning(
+                "crew log unit %s could not be read for the children it minted, so a "
+                "child of it that has not run yet may show with no creator until it does",
+                name,
+                exc_info=True,
+            )
+            return self._created[name].records if name in self._created else ()
+        records = created_records(head.sid, entries)
+        if truncated:
+            # At the producer, and once per cache miss rather than once per scan: the
+            # entry below answers every later scan while these bytes stand.
+            logger.warning(
+                "crew log unit %s names more than %d minted children, so the oldest "
+                "are not read; a child of it that has not run yet may show with no "
+                "creator until it does",
+                name,
+                TREE_CREATED_PER_UNIT_CAP,
+            )
+        self._created[name] = _Created(segment, stat.st_dev, stat.st_ino, stat.st_size, records)
+        return records
 
     def _read_edge(self, directory: Path, head: OpenedRecord) -> tuple[EdgeRecord | None, bool]:
         """One unit's newest DECISION, from the cache when its newest segment is
@@ -1528,14 +1821,21 @@ class SessionTree:
         """
         try:
             faults = _ScanFaults()
-            records, edges, faulted, over_cap = self._records_with_fault(
+            records, edges, created, faulted, over_cap = self._records_with_fault(
                 preferred, with_edges=with_edges, faults=faults
             )
+            nodes = fold_tree(records, edges)
+            # RETIRED here: a row whose child now has a log of its own is never read --
+            # the join consults the provisional layer only for a row the fold holds no
+            # node for -- so carrying it would cost the projection memory, a checkpoint
+            # row and a whole-log re-read on every later boot, and protect nothing.
+            pending = tuple(row for row in created if row.child_slot not in nodes)
             return TreeReading(
-                nodes=fold_tree(records, edges),
+                nodes=nodes,
                 incomplete=faulted or over_cap,
                 records=tuple(records),
                 edges=tuple(edges),
+                created=pending,
                 suspect_sids=tuple(faults.sids),
                 unattributed_fault=faults.unattributed,
             )
@@ -1580,7 +1880,7 @@ class SessionTree:
         is an enrichment, and a store fault must not take its page down.
         """
         try:
-            records, _, faulted, over_cap = self._records_with_fault([head_sid, *preferred])
+            records, _, _, faulted, over_cap = self._records_with_fault([head_sid, *preferred])
             return ChainReading(
                 chain=fold_slot_chain(records, head_sid), incomplete=faulted or over_cap
             )

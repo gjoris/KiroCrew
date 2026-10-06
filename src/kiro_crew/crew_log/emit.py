@@ -1598,6 +1598,63 @@ def on_session_released(
     )
 
 
+def on_session_created(
+    session_id: str,
+    *,
+    child_slot: str,
+    agent: str = "",
+) -> None:
+    """Record that the session *session_id* MINTED the child slot *child_slot*.
+
+    Written on the CREATOR, which is the opposite side from every other tree entry --
+    and that is the whole reason it exists. ``session/opened.parent`` is written by the
+    child, and the child cannot write it until it has an ACP session to key a log by,
+    which it gets on its first turn. The gap between ``session_create`` and that turn
+    is runtime and MCP startup, over a minute in practice, and for all of it the store
+    holds no record of the edge and a sidebar shows a freshly dispatched worker at the
+    top level. The creator is live and already has a log, so it can state the fact at
+    mint.
+
+    PROVISIONAL, and the child's own entry is still written exactly as before. This one
+    is read only for a live session the tree holds no node for, and is passed over the
+    moment that node exists -- including when the node deliberately has no parent,
+    which is what a release means.
+
+    ``agent`` is recorded for a reader of the creator's log and is not folded: the
+    agent a child was dispatched as is useful history beside the dispatch, and the
+    projection has no use for it, so retaining it would hold a string per pending child
+    for nothing.
+
+    Returns without waiting, and there is no ``on_settled`` here where the two decision
+    emitters have one. The difference is what the append IS: a takeover's whole
+    operation is its record, so a caller that claimed one it did not land would have
+    reported something that never happened. A mint's operation is the session, which
+    exists either way -- a lost write costs this child its nesting for one turn, which
+    is exactly the pre-existing behaviour, so nothing is owed a confirmation.
+
+    The projection is advanced inside the job AFTER the append succeeds -- durability
+    first, then memory -- so the disk can never hold a statement the memory lacks.
+    """
+    if not session_id or not child_slot:
+        # No child is not a statement: the row is keyed by the child slot, so an entry
+        # naming none addresses nothing a reader could fold.
+        return
+    data: dict[str, Any] = {"slot": child_slot}
+    if agent:
+        # Omitted rather than written empty, the distinction every citation here keeps:
+        # an empty string would read as a child dispatched as an agent with no name.
+        data["agent"] = agent
+
+    def _job() -> None:
+        log = _handle(session_id)
+        if log is None:
+            return
+        written = log.append("session/created", data, src=_SRC_GATEWAY)
+        _record_session_tree_created(session_id, child_slot, written)
+
+    _submit(_job, "appending session/created", session_id)
+
+
 def _parent_citation(slot: str, sid: str) -> "dict[str, str]":
     """One ``{slot, sid?}`` citation, or ``{}`` when there is no slot to cite.
 
@@ -4648,6 +4705,7 @@ __all__ = [
     "on_request_configured",
     "on_session_adopted",
     "on_session_closed",
+    "on_session_created",
     "on_session_opened",
     "on_session_released",
     "on_step_completed",
@@ -4711,6 +4769,46 @@ def _record_session_tree_decision(
         # reaches that frame through ``tb_frame.f_back``, so a handler that keeps records
         # would keep the handle and its write lease. Same ``traceback`` idiom, for the
         # same import-gate reason. Pinned by test_crew_log_exc_info_sites.py.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "session tree projection not advanced for %s:\n%s",
+                session_id,
+                traceback.format_exc().rstrip(),
+            )
+
+
+def _record_session_tree_created(session_id: str, child_slot: str, entry: Any) -> None:
+    """Fold a just-committed ``session/created`` into the in-memory session tree.
+
+    Called immediately AFTER the append succeeded, for the reason
+    :func:`_record_session_tree_decision` is: the tree is a projection that applies
+    deltas and never rescans, so this line is what makes a mint visible without waiting
+    for a cold start -- and waiting is precisely what this entry exists to stop.
+
+    *entry* is what ``append`` returned, so its ``seq`` and ``time`` are the values ON
+    DISK. ``seq`` orders this statement against the creator's others, and taking it
+    from the written line is what makes the live fold and a cold replay of that same
+    line agree.
+
+    Never raises, and never logs at a level an operator has to act on: the append has
+    already succeeded, so the record is safe on disk whatever happens here, and a
+    missed fold is recovered by the projection's tail replay on the next cold start.
+    """
+    try:
+        from kiro_crew.crew_log.session_tree_projection import record_created
+
+        raw = getattr(entry, "time", 0)
+        at = raw if isinstance(raw, int) and not isinstance(raw, bool) else 0
+        raw_seq = getattr(entry, "seq", 0)
+        seq = raw_seq if isinstance(raw_seq, int) and not isinstance(raw_seq, bool) else 0
+        record_created(session_id, child_slot, at, seq)
+    except Exception:  # pragma: no cover -- defensive; the door guards itself
+        # Rendered text, never ``exc_info``, for the reason
+        # :func:`_record_session_tree_edge` spells out: this frame names no handle, but
+        # its CALLER is the writer job, which binds ``log`` -- and a retained traceback
+        # reaches that frame through ``tb_frame.f_back``, so a handler that keeps records
+        # would keep the handle and its write lease. Pinned by
+        # test_crew_log_exc_info_sites.py.
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "session tree projection not advanced for %s:\n%s",

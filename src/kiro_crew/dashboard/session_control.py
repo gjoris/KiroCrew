@@ -2993,6 +2993,20 @@ async def create_session(
         # the child's first turn therefore loses the link rather than trusting
         # metadata for it.
         slot._lineage_minted = True
+        # State the edge on the CREATOR's log, now, rather than waiting for the child to
+        # state it on its own. The child's `session/opened.parent` is still written
+        # exactly as before and is still the authority -- but it needs the child's ACP
+        # session id, which arrives with its first turn, after runtime and MCP startup.
+        # For that minute or more the store records no edge at all and the sidebar shows
+        # this worker at the top level, which is the whole of what this call removes.
+        #
+        # Gated on the frozen creator sid, which is also the in-process `_lineage_minted`
+        # witness one line up: with no creator sid there is no log to append to, and a
+        # session a person opened in their own tab has no creator to record. Fire and
+        # forget -- the emitter queues to its writer thread and never blocks this
+        # synchronous window -- and a lost write costs this child its nesting for one
+        # turn, which is exactly the behaviour without this line.
+        _notify_crew_log_created(slot._created_by_sid, slot)
         # The creator's interactive auto-approve grant follows the work it is
         # handing off. Without this a trusted operator dispatches a worker that
         # then blocks on an approval prompt nobody is watching -- the same failure
@@ -3523,6 +3537,10 @@ async def fork_session(
         child._created_by = caller_key
         child._created_by_sid = _creator_sid if len(_creator_sid) <= MAX_ACP_SESSION_ID_LEN else ""
         child._lineage_minted = True
+        # The same provisional edge the create path states, for the same window: a fork
+        # is a mint too, and its child does not open a log of its own until its first
+        # turn. See `_notify_crew_log_created`.
+        _notify_crew_log_created(child._created_by_sid, child)
         posture["trust"] = bool(getattr(live_caller, "_trust", False))
         posture["trust_reads"] = bool(getattr(live_caller, "_trust_reads", False))
         child._trust = posture["trust"]
@@ -4114,6 +4132,47 @@ def authorize_target(
         raise deny(fence_reason, "not_creator")
 
     return slot
+
+
+def _notify_crew_log_created(creator_sid: str, child: Any) -> None:
+    """Tell the crew log that *creator_sid*'s session minted *child*. Never raises.
+
+    The ONE call site shape for both mints -- ``create_session`` and the fork -- so the
+    gate and the values cannot drift between them.
+
+    Called from the synchronous window that follows the last refusal gate, where
+    ``_lineage_minted`` is stamped: the fact being recorded is the mint, and recording
+    it anywhere later would reopen the window it exists to close. It cannot block that
+    window either, and does not -- the emitter hands the append to its writer thread
+    and returns.
+
+    *creator_sid* is the id already FROZEN and bounded onto the child, not a live read
+    of the caller's handle. The two must agree: that id is what the child's own
+    ``session/opened`` will cite as ``parent.sid``, and a creator whose handle is
+    replaced between this mint and that turn is a different log.
+
+    Silent with no creator sid -- a person's own tab, a slot whose caller had no ACP
+    session yet -- because there is then no log to append to and no creator to record.
+    Silent with the crew log off, which the emitter's own gate decides.
+
+    Never raises, and the reason is the same one the emitter's doors give: this is a
+    bookkeeping entry about a session that already exists, so a failure here must not
+    fail the create. The cost of a lost one is that the child renders unnested until
+    its first turn, which is exactly the behaviour this call improves on.
+    """
+    if not creator_sid:
+        return
+    child_slot = str(getattr(child, "key", "") or "")
+    if not child_slot:
+        return
+    try:
+        crew_log_emit.on_session_created(
+            creator_sid,
+            child_slot=child_slot,
+            agent=str(getattr(child, "agent", "") or ""),
+        )
+    except Exception:
+        logger.debug("crew log could not record a session creation", exc_info=True)
 
 
 def _slot_tree_parent(slot_key: str) -> "tuple[bool, str, dict[str, Any]]":

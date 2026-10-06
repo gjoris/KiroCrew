@@ -44,6 +44,13 @@ VETTED: frozenset[tuple[str, str]] = frozenset(
         ("read.py", "dispatch_view"),
         ("session_tree.py", "reading"),
         ("session_tree.py", "chain"),
+        # The scanner's creations read, beside ``_read`` and ``_read_edge`` and on the
+        # same terms: the whole class stats directories and reads lines through the
+        # store's own functions and never names a handle, so a traceback in one of its
+        # frames pins no lease. It reports at WARNING because a creator's whole log
+        # being unreadable is why a dispatched child shows with no creator, and that is
+        # worth a traceback for whoever has to find out why.
+        ("session_tree.py", "_read_created"),
         # The projection is a pure in-memory fold over records another writer already
         # committed: the module names no handle at all, opens none, and takes none as a
         # parameter, so no frame OF ITS OWN holds one -- which is why the no-handle check

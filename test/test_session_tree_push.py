@@ -156,6 +156,40 @@ def test_a_restored_slot_s_first_turn_seeds_before_it_reads():
     assert chat_runner._crew_log_inherited_parent(restored, "s-worker-1") == "lead"
 
 
+@pytest.mark.asyncio
+async def test_a_slot_that_never_wrote_a_log_cites_no_creator_even_with_a_creation_on_disk():
+    """The creator's ``session/created`` row is NOT promoted into the child's own entry,
+    and that refusal is the security property rather than a missing feature.
+
+    The row is keyed by the slot KEY and by nothing else, and a key is reusable. A
+    never-run child can be deleted -- it has no unit, so no removal path can find the
+    row -- and a person can then open a tab under that same name. Writing the row's
+    creator into THAT tab's immutable ``session/opened`` would hand the ownership check
+    in ``session_control.revive_session`` a gateway-authored edge for an incarnation
+    the creator never made, so a fenced caller that forged the tab's restored
+    ``created_by`` would gain reach over an archived session it does not own.
+
+    The walk in :func:`_crew_log_inherited_parent` is safe for the opposite reason: it
+    needs this slot's OWN earlier log, which a fresh tab on a reused key does not have.
+    """
+    emit.on_session_opened("s-lead", agent="kirocrew-lead", slot="lead")
+    emit.on_session_created("s-lead", child_slot="worker", agent="kirocrew-worker")
+    assert emit.flush(timeout=5.0) is True
+    stp.reset_for_tests()
+    emit.reset_caches()
+
+    record = await run_turn(
+        TurnScript(events=_LANDS, setup=_restored_worker), slot=SlotSpec(key="worker")
+    )
+
+    # The row IS on disk and readable, so the refusal is the rule and not an absence.
+    stp.projection().ensure_seeded()
+    assert stp.projection().pending_parent("worker") == "lead"
+    [opened] = _opened(record)
+    assert opened["previous_sid"] == ""
+    assert opened["parent_slot"] == ""
+
+
 def test_a_new_slot_on_a_reused_key_inherits_nothing():
     """A key is reusable; the old worker's edge must not attach to a fresh tab."""
     from kiro_crew.dashboard import chat_runner

@@ -10243,6 +10243,18 @@ async def _run_chat(
             # After the take, because the walk starts from the log this one supersedes:
             # the predecessor named here is exactly the one this entry will cite.
             _creator_key = _crew_log_inherited_parent(slot, _crew_log_edge.sid)
+        # The creator's own ``session/created`` row is deliberately NOT read here, and
+        # a slot that has never written a log therefore cites no creator -- which is
+        # the pre-existing answer. The row is keyed by the slot KEY and by nothing else,
+        # and a key is reusable: a never-run child can be deleted, a person can open a
+        # tab under that same name, and the row survives both because the child had no
+        # unit for any removal path to find. The walk above is safe precisely because
+        # it needs this slot's OWN earlier log, which a new tab does not have. Writing
+        # the row's creator into this entry instead would hand the ownership check in
+        # ``session_control.revive_session`` a gateway-authored edge for an incarnation
+        # the creator never made. Binding the row to the child incarnation would need a
+        # durable record that the incarnation is gone, which this store deliberately
+        # does not keep.
         crew_log_emit.on_session_opened(
             _crew_log_sid,
             agent=slot.agent or "",

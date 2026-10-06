@@ -593,7 +593,11 @@ def _attach_slot_parents(
 
         proj = projection()
         if proj.seeded_for_current_store:
-            parents = lineage_parents(rows, proj.nodes(), aliases)
+            # ``pending_parent`` is handed over with the fold, so a child minted and
+            # not yet run is nested on this frame rather than on its first turn. The
+            # join consults it only for a row the fold holds no node for -- see
+            # ``lineage_parents``.
+            parents = lineage_parents(rows, proj.nodes(), aliases, proj.pending_parent)
             # A seed that FAILED leaves a readable but EMPTY state, so the check above
             # is satisfied and this path would otherwise never ask for another one --
             # the projection's own retry is reached only by a caller that seeds, and

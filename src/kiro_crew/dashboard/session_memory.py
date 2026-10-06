@@ -138,6 +138,7 @@ def lineage_parents(
     rows: list[dict[str, object]],
     nodes: "Mapping[str, TreeNode]",
     spend_slot_by_session: Optional[dict[str, str]] = None,
+    pending_parent: Optional[Callable[[str], str]] = None,
 ) -> dict[str, Optional[dict[str, object]]]:
     """Per live row, the ``parent`` it carries on the wire -- ``{slot, key}`` or ``None``.
 
@@ -173,10 +174,31 @@ def lineage_parents(
     it takes the nodes alone rather than a whole reading -- which is also what keeps it
     from deciding a question that belongs to its caller.
 
+    *pending_parent* is the PROVISIONAL reading, and it is consulted for exactly one
+    shape: a live row the fold holds NO NODE for. That is a child between
+    ``session_create`` and its first turn -- it has no crew log of its own yet, so
+    nothing in *nodes* can speak for it, and until this it rendered at the top level
+    for the minute or more that runtime and MCP startup take.
+
+    A node, once it exists, WINS -- including a node whose ``parent_slot`` is ``None``.
+    That absence is not a gap to fill: it is either a session nobody created or one a
+    ``session/released`` deliberately let go, and re-reading a creation over it would
+    put back an edge somebody took away, in the one view a person would look at to
+    confirm the release. So the fallback is keyed on the node's EXISTENCE and never on
+    the value inside it.
+
+    The pending edge is turned into a payload by the same :func:`parent_payload` a
+    folded node goes through, on a node built here, so the two cannot nest the same
+    gateway differently: one join, one rule for when the creator's live key is
+    followed. ``cycle`` is false on that node because a slot with no log of its own is
+    cited by nothing and so can be on no cycle.
+
     An empty *nodes* means no row has a creator (the crew log is off, or nothing
     on disk cites one), and the storage package stays UNIMPORTED on that path:
     ``parent_payload`` is imported below the early return, so a flag-off boot
-    never loads it. Existing tests pin that.
+    never loads it. Existing tests pin that. A pending edge cannot reach a reader on
+    that path either, which is right: with no folded node anywhere there is no creator
+    row for one to nest under.
     """
     if not nodes:
         return {}
@@ -218,9 +240,39 @@ def lineage_parents(
         key = row.get("key")
         if not isinstance(key, str) or not key:
             continue
-        node = next((nodes[s] for s in slot_spellings(key) if s in nodes), None)
+        spellings = slot_spellings(key)
+        node = next((nodes[s] for s in spellings if s in nodes), None)
+        if node is None and pending_parent is not None:
+            node = _pending_node(spellings, pending_parent)
         out[key] = parent_payload(node, live_key_of, key)
     return out
+
+
+def _pending_node(spellings: list[str], pending_parent: Callable[[str], str]) -> "TreeNode | None":
+    """A stand-in node for a row the fold holds nothing for, or ``None``.
+
+    Reached only when no spelling of the row's key is in the fold, which is a child
+    that has not opened a log yet. The first spelling the creator's own log names wins,
+    in the same order the fold is searched, so one row cannot be nested one way by the
+    tree and another by this.
+
+    Never raises: the read is in-memory and guarded at its own door, and a provisional
+    edge is an improvement on "no creator known" rather than something a frame may fail
+    for.
+    """
+    from kiro_crew.crew_log.session_tree import TreeNode as _TreeNode
+
+    for spelling in spellings:
+        try:
+            creator = pending_parent(spelling)
+        except Exception:
+            logger.debug("pending session lineage could not be read", exc_info=True)
+            return None
+        if creator:
+            # ``cycle`` is false because a slot with no log of its own is cited by
+            # nothing, so it can lie on no cycle of citations.
+            return _TreeNode(slot=spelling, parent_slot=creator, cycle=False)
+    return None
 
 
 def session_title(key: str, get_slot: Callable[[str], object]) -> dict[str, object]:
@@ -338,7 +390,9 @@ class SessionMemorySampler:
         # instant cannot tell a leak from churn.
         self._ownership_faults = 0
 
-    def _lineage(self, rows: list[dict[str, object]]) -> "tuple[dict[str, TreeNode], bool, int]":
+    def _lineage(
+        self, rows: list[dict[str, object]]
+    ) -> "tuple[dict[str, TreeNode], bool, int, Callable[[str], str] | None]":
         """Who opened whom; whether the store held more session logs than a scan
         admits; and that cap (``TREE_UNIT_CAP``), so the payload can say "N+"
         without this module importing the storage package on a flag-off boot.
@@ -370,13 +424,17 @@ class SessionMemorySampler:
         from kiro_crew.crew_log import emit as crew_log_emit
 
         if not crew_log_emit.enabled():
-            return {}, False, 0
+            return {}, False, 0, None
         from kiro_crew.crew_log.session_tree import TREE_UNIT_CAP
         from kiro_crew.crew_log.session_tree_projection import projection
 
         tree = projection()
         tree.ensure_seeded(tuple(live_sids(rows)))
-        return tree.nodes(), tree.over_cap, TREE_UNIT_CAP
+        # The PROVISIONAL reading travels as the projection's own bound method rather
+        # than as a snapshot dict, so a child minted between this sample and the join
+        # below is nested by it. Safe to hand over: the sample runs on a thread of this
+        # process, and the method takes the projection's lock and does no I/O.
+        return tree.nodes(), tree.over_cap, TREE_UNIT_CAP, tree.pending_parent
 
     # ── history ────────────────────────────────────────────────────────────
     def record_total(self, total_mb: float, *, now: Optional[float] = None) -> None:
@@ -653,7 +711,7 @@ class SessionMemorySampler:
             phase_ms = {}
         lineage_sample = samples["lineage"]
         assert isinstance(lineage_sample, tuple)
-        lineage, lineage_over_cap, lineage_cap = lineage_sample
+        lineage, lineage_over_cap, lineage_cap, lineage_pending = lineage_sample
         assert isinstance(lineage, dict)
         assert isinstance(lineage_over_cap, bool)
         assert isinstance(lineage_cap, int)
@@ -663,7 +721,7 @@ class SessionMemorySampler:
         # ``lineage_parents`` because the dashboard slot payload needs the same
         # answer, and two implementations of it would let the Sessions table and
         # the sidebar's conductor lane nest the same gateway differently.
-        parents = lineage_parents(rows, lineage, spend_slot_by_session)
+        parents = lineage_parents(rows, lineage, spend_slot_by_session, lineage_pending)
 
         sessions_out: list[dict[str, object]] = []
         total_mb = 0.0

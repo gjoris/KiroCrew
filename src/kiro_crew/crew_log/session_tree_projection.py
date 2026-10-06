@@ -77,14 +77,18 @@ from typing import Any, Final, Optional
 from kiro_crew.crew_log.checkpoint import CHECKPOINT_DIR, MAX_CHECKPOINT_BYTES
 from kiro_crew.crew_log.schema import KIND_SESSION
 from kiro_crew.crew_log.session_tree import (
+    TREE_CREATED_PER_UNIT_CAP,
     TREE_UNIT_CAP,
+    CreatedRecord,
     EdgeRecord,
     OpenedRecord,
     TreeNode,
     TreeReading,
     _ScanFaults,
+    created_supersedes,
     edge_supersedes,
     fold_tree,
+    latest_created,
     log_rank_of,
 )
 from kiro_crew.crew_log.store import log_exception_text
@@ -110,7 +114,15 @@ CHECKPOINT_NAME: Final[str] = "session-tree.json"
 #: why this is a bump rather than a key read additively: a file written before
 #: adoptions existed would load as "no session has ever been adopted", which looks
 #: exactly like the truth and is wrong.
-CHECKPOINT_VERSION: Final[int] = 4
+#:
+#: 5 adds ``created`` -- the provisional edges a creator states at mint -- and with it
+#: a stricter meaning for ``scans``. A version-4 file's cached identity asserted only
+#: that a unit records no DECISION, where this build reads the same entry as asserting
+#: that the unit names no minted child either; trusting one would skip the creations
+#: read for every unit in the store and report a gateway full of dispatched workers as
+#: having created nobody. So this bump is load-bearing rather than cosmetic, and it is
+#: why the older file is DISCARDED rather than read additively.
+CHECKPOINT_VERSION: Final[int] = 5
 
 #: How long the projection waits before re-attempting a seed that RAISED, in seconds.
 #: A failed seed serves an empty tree, so latching it for the life of the process makes
@@ -131,11 +143,15 @@ ScanIdentity = tuple[int, int, int, int]
 #: What a checkpoint load yields, and what a tail replay yields on top of it. Aliased for
 #: the same reason: a five-place tuple in a signature is not readable at the call site.
 _LoadedCheckpoint = tuple[
-    "dict[str, OpenedRecord]", "dict[tuple[str, str], EdgeRecord]", "dict[str, ScanIdentity]"
+    "dict[str, OpenedRecord]",
+    "dict[tuple[str, str], EdgeRecord]",
+    "dict[tuple[str, str], CreatedRecord]",
+    "dict[str, ScanIdentity]",
 ]
 _ReplayResult = tuple[
     "dict[str, OpenedRecord]",
     "dict[tuple[str, str], EdgeRecord]",
+    "dict[tuple[str, str], CreatedRecord]",
     "dict[str, ScanIdentity]",
     bool,
     bool,
@@ -323,6 +339,47 @@ def _edge_from_json(raw: Any) -> EdgeRecord | None:
     return EdgeRecord(slot=slot, parent_slot=parent or None, at=at, sid=sid, seq=seq)
 
 
+def _created_to_json(record: CreatedRecord) -> dict[str, Any]:
+    """One creation as plain JSON. Short keys, one row per child a creator minted."""
+    return {
+        "slot": record.child_slot,
+        "src": record.source_sid,
+        "at": record.at,
+        "seq": record.seq,
+    }
+
+
+def _created_from_json(raw: Any) -> CreatedRecord | None:
+    """One creation from the checkpoint, or ``None`` when it is not one.
+
+    Type-checked rather than coerced and BOUNDED on the same limits every other door
+    into this state applies, for the reason :func:`_record_from_json` gives: the file
+    is a plain file under the data home, so what makes it safe to load is this check
+    rather than its provenance. A row this cannot read costs that child its
+    provisional row until its own log lands, which is the pre-existing answer rather
+    than a wrong one -- so it is dropped rather than guessed at.
+    """
+    if not isinstance(raw, dict):
+        return None
+    child_slot = raw.get("slot")
+    source_sid = raw.get("src")
+    at = raw.get("at")
+    if not isinstance(child_slot, str) or not child_slot or len(child_slot) > MAX_SHORT_STRING:
+        return None
+    if (
+        not isinstance(source_sid, str)
+        or not source_sid
+        or len(source_sid) > MAX_ACP_SESSION_ID_LEN
+    ):
+        return None
+    if isinstance(at, bool) or not isinstance(at, int):
+        return None
+    seq = raw.get("seq", 0)
+    if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+        return None
+    return CreatedRecord(child_slot=child_slot, source_sid=source_sid, at=at, seq=seq)
+
+
 #: Every projection alive in this process. WEAK, so membership never keeps one from
 #: being collected -- this exists to reach a projection's pending checkpoint write, not
 #: to own the projection. :func:`reset_for_tests` is the reader: the process-wide
@@ -361,6 +418,26 @@ class SessionTreeProjection:
         #: deleted unit leave the slot with the surviving log's decision instead of with
         #: none.
         self._edges: dict[tuple[str, str], EdgeRecord] = {}
+        #: The PROVISIONAL edges: each child slot a creator's log says it minted, keyed
+        #: ``(child_slot, source_sid)``.
+        #:
+        #: A third layer rather than a field on either of the two above, and
+        #: deliberately outside ``fold_tree``. ``_records`` and ``_edges`` are evidence
+        #: about a session that has a log; this is evidence about one that does NOT yet
+        #: -- a child between ``session_create`` and its first turn, which is the whole
+        #: window the sidebar has nothing else to nest it by. Folding it into a node would
+        #: give a session with no log a place in the tree, and that node would then be
+        #: read by every consumer of ``nodes`` including the ones that DECIDE: the
+        #: adoption cycle guard, and the ownership corroboration that archived-session
+        #: revival turns on. Those must keep asking the child's own append-only
+        #: ``session/opened``, so this layer answers exactly one question --
+        #: :meth:`pending_parent` -- for exactly one consumer, the display join.
+        #:
+        #: Keyed by the SOURCE as well as the child for the reason the decisions are
+        #: keyed by their citing log: a slot key is reusable, so two creators can each
+        #: have minted a child of that name, and :func:`latest_created` picks between
+        #: them with the same log ranking the tree is folded by.
+        self._created: dict[tuple[str, str], CreatedRecord] = {}
         #: Per unit, the identity its log had when a COMPLETE tree-edge read last found
         #: no decision (:func:`~kiro_crew.crew_log.store.tree_edge_scan_identity`).
         #:
@@ -373,6 +450,12 @@ class SessionTreeProjection:
         #: Never produces an edge. A stale or missing entry costs one re-read, which is
         #: the pass's ordinary cost; the one thing it cannot do is assert a decision,
         #: because no read of the current bytes stands behind it.
+        #:
+        #: The verdict it caches is BOTH negatives at once -- no decision and no minted
+        #: child -- because the two reads are gated by one identity and a boot that
+        #: skipped one while re-paying the other would learn nothing from the skip. An
+        #: entry is therefore honoured only while neither is held for the unit, and the
+        #: checkpoint version is what keeps an older file's weaker claim out.
         self._scans: dict[str, ScanIdentity] = {}
         #: The cached fold. ``None`` marks it owed, so :meth:`nodes` recomputes once and
         #: then hands out the same object until something actually changes.
@@ -591,31 +674,37 @@ class SessionTreeProjection:
     def apply(self, record: OpenedRecord) -> None:
         """Fold ONE newly-committed record in. Pure with respect to the disk.
 
-        Called by the emitter right after the ``session/opened`` append succeeded, so
-        the memory never runs ahead of durability. Idempotent by identity: a record
-        equal to the one already held is not a change, so it neither invalidates the
-        cached fold nor dirties the checkpoint -- which is what keeps a re-attach in
-        the same process from costing a rewrite.
+            Called by the emitter right after the ``session/opened`` append succeeded, so
+            the memory never runs ahead of durability. Idempotent by identity: a record
+            equal to the one already held is not a change, so it neither invalidates the
+            cached fold nor dirties the checkpoint -- which is what keeps a re-attach in
+            the same process from costing a rewrite.
 
-        A record with no ``sid`` is dropped: the state is keyed by it, and a blank key
-        would collide every such record onto one entry. A record carrying a string past
-        its bound is dropped too, on the same terms as every other door into this state
-        (see :func:`_within_bounds`): the emitter passes through the id the BACKEND chose,
-        which this process does not control, and retaining it would hold that string for
-        the projection's life and then write it to the checkpoint.
+            A record with no ``sid`` is dropped: the state is keyed by it, and a blank key
+            would collide every such record onto one entry. A record carrying a string past
+            its bound is dropped too, on the same terms as every other door into this state
+            (see :func:`_within_bounds`): the emitter passes through the id the BACKEND chose,
+            which this process does not control, and retaining it would hold that string for
+            the projection's life and then write it to the checkpoint.
 
-        Bounded by :data:`TREE_UNIT_CAP` like every other path that adds a record. Past
-        the cap the new record is admitted and the oldest held one is evicted, and both
-        completeness flags are set because the state then genuinely lacks edges. See the
-        module docstring for why age is the eviction key.
+            Bounded by :data:`TREE_UNIT_CAP` like every other path that adds a record. Past
+            the cap the new record is admitted and the oldest held one is evicted, and both
+            completeness flags are set because the state then genuinely lacks edges. See the
+            module docstring for why age is the eviction key.
+
+            RETIRES the provisional rows for this record's slot. The slot has a log of its own
+        now, which is the authority, and the display join consults the provisional layer
+        only for a row the fold holds no node for -- so those rows can never be read
+        again, while keeping them would cost memory, a checkpoint row, and a whole-log
+        re-read of that creator on every later boot.
 
         A citation is never RETRACTED by a later record for the same session. A resume
-        appends its own ``session/opened``, and that entry need not repeat the creator
-        the first one named -- so replacing outright would drop the edge on resume and
-        leave the session looking like a root until the process re-seeds from disk. The
-        held ``parent_slot`` therefore survives a parentless update. It is not the
-        reverse of a real change: nothing retracts a creator, because the crew log has no
-        entry that means "this session was not opened by anyone after all".
+            appends its own ``session/opened``, and that entry need not repeat the creator
+            the first one named -- so replacing outright would drop the edge on resume and
+            leave the session looking like a root until the process re-seeds from disk. The
+            held ``parent_slot`` therefore survives a parentless update. It is not the
+            reverse of a real change: nothing retracts a creator, because the crew log has no
+            entry that means "this session was not opened by anyone after all".
         """
         if not record.sid:
             return
@@ -633,6 +722,15 @@ class SessionTreeProjection:
                 return
             self._records[record.sid] = record
             self._evict_to_cap_locked()
+            # RETIRE the provisional rows this record answers for. The slot now has a
+            # log of its own, so the join will never consult them again -- it falls
+            # back to the provisional layer only for a row the fold holds no node for.
+            # Keeping them would cost projection memory, a row in every checkpoint, and
+            # a whole-log re-read of this creator on every later boot, and protect
+            # nothing: the authority has arrived.
+            if record.slot:
+                for key in [k for k in self._created if k[0] == record.slot]:
+                    self._created.pop(key, None)
             self._nodes = None
             self._dirty = True
         self._changed()
@@ -703,6 +801,134 @@ class SessionTreeProjection:
             self._nodes = None
             self._dirty = True
         self._changed()
+
+    def apply_created(self, record: CreatedRecord) -> None:
+        """Fold ONE newly-committed ``session/created`` in -- a child was minted.
+
+        Called by the emitter right after the append succeeded, on the same terms as
+        :meth:`apply` and :meth:`apply_edge`: durability first, then memory, so the
+        disk can never hold a statement the memory lacks.
+
+        SAME-REFERENCE when nothing moves, like every other no-op path here. A
+        statement equal to the one held changes nothing, so a replay of a tail the
+        checkpoint already covered costs neither a rewrite nor a re-render.
+
+        AN OLDER STATEMENT NEVER WINS, and the comparison is
+        :func:`created_supersedes` for the reason :meth:`apply_edge` compares rather
+        than assigns: this state has several doors -- a checkpoint load, a tail replay,
+        the writer -- and a replay walks units in directory order, so a mint read from
+        one unit can arrive after a later mint of the same child name made by another.
+
+        A statement with no child slot is dropped: the state is keyed by it, and a
+        blank key would collide every such row onto one entry. One past its bound is
+        REFUSED rather than truncated, because a truncated slot key is a different key.
+
+        Bounded by :data:`TREE_UNIT_CAP` like every path that adds to this state.
+        """
+        if not record.child_slot or not record.source_sid:
+            return
+        if (
+            len(record.child_slot) > MAX_SHORT_STRING
+            or len(record.source_sid) > MAX_ACP_SESSION_ID_LEN
+        ):
+            logger.debug("session tree projection refused an over-long creation; dropping it")
+            return
+        with self._lock:
+            key = (record.child_slot, record.source_sid)
+            held = self._created.get(key)
+            if held == record:
+                return
+            if held is not None and not created_supersedes(
+                record, held, log_rank_of(self._records.values())
+            ):
+                return
+            self._created[key] = record
+            # This unit NAMES a minted child, so a cached "nothing here" verdict for it
+            # is void. The identity would have changed anyway -- the append moved the
+            # bytes -- but a cache that can be dropped the moment it is known wrong
+            # should be.
+            self._scans.pop(record.source_sid, None)
+            self._evict_created_to_cap_locked()
+            self._dirty = True
+            # Deliberately NOT invalidating ``_nodes``: creations make no node, so the
+            # fold is unchanged and a reader comparing it by identity is right to see
+            # the same object. The push below is still owed, because the display join
+            # reads ``pending_parent`` beside the fold and that answer HAS moved.
+        self._changed()
+
+    def pending_parent(self, slot: str) -> str:
+        """The creator a minted-but-silent *slot* hangs under, or ``""``. No I/O.
+
+        The provisional reading, for a live row the fold holds no node for -- a child
+        between ``session_create`` and its first turn. A node is the authority and this
+        is never consulted while one exists, which is the caller's rule rather than
+        this method's: see :func:`~kiro_crew.dashboard.session_memory.lineage_parents`,
+        where a node with no parent is a RELEASE and re-reading a creation over it
+        would put back an edge somebody deliberately took away.
+
+        The creator is named as a SID by the entry and resolved to a slot here, from
+        the creating unit's own record. Nothing writes the creator's slot key into the
+        entry: the unit's immutable header already states it, and a second copy would
+        invite a reader to trust the copy. The cost is that a creator whose own record
+        this state does not hold -- evicted past the cap, retained out of the store,
+        not yet applied -- answers ``""``, which is the pre-existing "no creator known"
+        rather than a wrong edge.
+
+        ``""`` while a fault with no owning unit stands, for the reason
+        :meth:`trusted_creator` refuses then: any slot could be the one it hid.
+
+        Taken as a BOUND METHOD by its two callers -- the dashboard slot payload and
+        the Sessions table's sampler -- both of which have already established that
+        this projection is seeded for the store configured now. No module-level wrapper
+        re-states that gate, because a second spelling of it would be one more place
+        for the two to disagree about which store answered.
+        """
+        if not slot:
+            return ""
+        with self._lock:
+            if self._unattributed_gap:
+                return ""
+            candidates = [
+                record for (child, _src), record in self._created.items() if child == slot
+            ]
+            if not candidates:
+                return ""
+            # Ranked by the same map the tree is folded by, so two creators claiming one
+            # reusable slot key are settled the way two decisions about one slot are.
+            newest = latest_created(candidates, log_rank_of(self._records.values())).get(slot)
+            if newest is None:
+                return ""
+            source = self._records.get(newest.source_sid)
+            return source.slot if source is not None and source.slot else ""
+
+    def _evict_created_to_cap_locked(self) -> None:
+        """Bring the creations back within :data:`TREE_UNIT_CAP`. Caller holds the lock.
+
+        Oldest-first by ``(at, child_slot, source_sid)``, the shape the two evictions
+        above use and for the same reasons: the row just applied was committed a moment
+        ago, so evicting the oldest keeps the sessions a sidebar is actually showing,
+        and the trailing keys make the choice deterministic rather than dependent on
+        dictionary order.
+
+        LOGGED and reported on no flag -- not ``incomplete``, not ``over_cap``, not the
+        suspect list. An evicted creation means a dispatched child that renders unnested
+        for one turn, which is the pre-existing behaviour, and the fold is untouched.
+        Saying it on the fold's own flags instead would make one prolific creator refuse
+        every adoption on this gateway, which is a far larger harm than the one being
+        reported.
+        """
+        surplus = len(self._created) - TREE_UNIT_CAP
+        if surplus <= 0:
+            return
+        doomed = sorted(self._created.values(), key=lambda r: (r.at, r.child_slot, r.source_sid))
+        for record in doomed[:surplus]:
+            self._created.pop((record.child_slot, record.source_sid), None)
+        logger.warning(
+            "session tree: more than %d children are waiting for their first turn, so "
+            "the oldest %d are dropped and will show with no creator until they run",
+            TREE_UNIT_CAP,
+            surplus,
+        )
 
     def _evict_edges_to_cap_locked(self) -> None:
         """Bring the decisions back within :data:`TREE_UNIT_CAP`. Caller holds the lock.
@@ -806,7 +1032,15 @@ class SessionTreeProjection:
         removed, so the complete read IS the unit's current answer and a held decision
         that outranks it is exactly the stale one being corrected.
 
-        Three outcomes, and the middle one is the finding this exists for:
+        The unit's CREATIONS are re-derived on the same pass, because one removal
+        strands both and a reconciliation that corrected only the decision would leave
+        the other asserting a creator whose segments are deleted. They take the
+        unconditional rule without the three-way split below: the read is complete for
+        this unit, so its result IS the unit's current set -- rows it does not hold are
+        dropped, rows it holds are installed.
+
+        Three outcomes for the DECISION, and the middle one is the finding this exists
+        for:
 
         * A decision is found -- it replaces whatever was held for this unit.
         * The read SUCCEEDS and finds none -- the decision has been retained out of the
@@ -818,46 +1052,107 @@ class SessionTreeProjection:
           discard a valid decision over a transient error; keeping it silently would
           serve a possibly-stale tree as complete.
 
-        Best effort and silent about a unit it does not hold, for the reason
+        Best effort and silent about a unit it holds nothing for, for the reason
         :meth:`forget` is: the removal is reported by the code that did it.
         """
         if not sid or not slot:
             return
-        from kiro_crew.crew_log.session_tree import edge_record
-        from kiro_crew.crew_log.store import _checked_crew_log_root, find_last_tree_edge
+        from kiro_crew.crew_log.session_tree import created_records, edge_record
+        from kiro_crew.crew_log.store import (
+            _checked_crew_log_root,
+            find_last_tree_edge,
+            find_tree_created,
+        )
 
         key = (slot, sid)
         with self._lock:
-            if key not in self._edges:
-                # No decision held for this unit, so a removal cannot have stranded one.
-                # Checked under the lock and before the read, so the common partial
-                # removal -- a unit that never recorded a decision -- costs no file IO.
+            held_created = {
+                created_key
+                for created_key, record in self._created.items()
+                if record.source_sid == sid
+            }
+            if key not in self._edges and not held_created:
+                # Nothing held for this unit on either axis, so a removal cannot have
+                # stranded anything. Checked under the lock and before the read, so the
+                # common partial removal -- a unit that recorded no decision and minted
+                # nobody -- costs no file IO.
                 return
         try:
             root = _checked_crew_log_root(KIND_SESSION)
-            found = edge_record(slot, sid, find_last_tree_edge(root / _store_name(sid)))
+            directory = root / _store_name(sid)
+            found = edge_record(slot, sid, find_last_tree_edge(directory))
+            # Read on the same pass, because the same removal strands both and a
+            # reconciliation that corrected one would leave the other asserting a
+            # creator whose segments are deleted.
+            created_entries, created_dropped = find_tree_created(
+                directory, TREE_CREATED_PER_UNIT_CAP
+            )
+            found_created = created_records(sid, created_entries)
         except (OSError, ValueError):
             with self._lock:
                 self._incomplete = True
                 if sid in self._records:
                     self._suspect_sids.add(sid)
             return
+        moved = False
         with self._lock:
             held = self._edges.get(key)
-            if held is None:
-                return
-            if found is None:
-                del self._edges[key]
-                # NOT recorded as a cached negative verdict: this read is of a unit whose
-                # segments were being removed as it ran, so the identity it would be
-                # keyed by is not one a later boot should trust to skip its own read.
-                self._scans.pop(sid, None)
-            elif held == found:
-                # Already the disk's answer: the removal took segments this decision was
-                # not in. Same-reference, like every other no-op path here.
-                return
+            if held is not None:
+                if found is None:
+                    del self._edges[key]
+                    # NOT recorded as a cached negative verdict: this read is of a unit
+                    # whose segments were being removed as it ran, so the identity it
+                    # would be keyed by is not one a later boot should trust to skip its
+                    # own read.
+                    self._scans.pop(sid, None)
+                    moved = True
+                elif held != found:
+                    self._edges[key] = found
+                    moved = True
+            # THE DISK DECIDES here too, and unconditionally: the complete read above IS
+            # this unit's current set of creations, so a row it does not hold has been
+            # retained out of the log and must not outlive it. Rows for OTHER units are
+            # untouched -- the set was narrowed to this sid before the read.
+            nodes = (
+                self._nodes
+                if self._nodes is not None
+                else fold_tree(self._records.values(), self._edges.values())
+            )
+            # Retired on the way in, like every other door: a child that has a log of
+            # its own is answered by that log, so its row is never read again.
+            fresh = {
+                (record.child_slot, sid): record
+                for record in found_created
+                if record.child_slot not in nodes
+            }
+            if created_dropped:
+                # The read was TRUNCATED, so it proves nothing about a row it does not
+                # hold -- that row may be one of the older ones dropped to fit, so the
+                # held rows are left alone.
+                pass
             else:
-                self._edges[key] = found
+                live = {
+                    created_key
+                    for created_key, record in self._created.items()
+                    if record.source_sid == sid
+                }
+                for created_key in live - set(fresh):
+                    self._created.pop(created_key, None)
+                    # NOT cached as a negative verdict, for the reason the decision
+                    # above is not: these bytes were being removed as the read ran.
+                    self._scans.pop(sid, None)
+                    moved = True
+            for created_key, record in fresh.items():
+                if self._created.get(created_key) != record:
+                    self._created[created_key] = record
+                    moved = True
+            if moved:
+                self._evict_created_to_cap_locked()
+            if not moved:
+                # Already the disk's answer: the removal took segments neither the
+                # decision nor the creations were in. Same-reference, like every other
+                # no-op path here.
+                return
             self._nodes = None
             self._dirty = True
         self._changed()
@@ -891,12 +1186,22 @@ class SessionTreeProjection:
             dropped_edges = [key for key, edge in self._edges.items() if edge.sid == sid]
             for key in dropped_edges:
                 self._edges.pop(key, None)
+            # Any CREATION this unit stated goes with it, on the same terms and for the
+            # same reason: a unit that is gone is not evidence for what it minted, and
+            # keeping the row would hang a child under a creator with nothing on disk
+            # behind it. A child that has since run is unaffected -- it has a node of
+            # its own, and ``pending_parent`` is not consulted for a slot that has one.
+            dropped_created = [
+                key for key, record in self._created.items() if record.source_sid == sid
+            ]
+            for key in dropped_created:
+                self._created.pop(key, None)
             # The cached "this unit records no decision" verdict goes too: it is keyed by
             # a unit that is gone, so the only thing it could still answer about is a
             # directory some later session happens to be given the same name.
             self._scans.pop(sid, None)
             self._suspect_sids.discard(sid)
-            if self._records.pop(sid, None) is None and not dropped_edges:
+            if self._records.pop(sid, None) is None and not dropped_edges and not dropped_created:
                 return
             self._nodes = None
             self._dirty = True
@@ -956,6 +1261,7 @@ class SessionTreeProjection:
                     # replay would keep every one it could not disprove.
                     self._records = {}
                     self._edges = {}
+                    self._created = {}
                     self._nodes = None
                     self._incomplete = False
                     self._over_cap = False
@@ -1119,6 +1425,35 @@ class SessionTreeProjection:
         self._edges = merged
         self._evict_edges_to_cap_locked()
 
+    def _install_seed_created_locked(self, scanned: "dict[tuple[str, str], CreatedRecord]") -> None:
+        """Install the creations a seed established, keeping the NEWER of the two.
+
+        Caller holds the lock. The rule is :meth:`_install_seed_edges_locked`'s, for
+        the reason that one does not merge by provenance: these records carry their own
+        order, so the newer of held and scanned wins -- a mint committed while the scan
+        ran is newer than anything the scan could have read, and a mint the scan read
+        from a log this process never applied is newer than a stale held one.
+        Provenance cannot separate those two cases and the records' own order can.
+
+        A unit REMOVED while the scan ran takes its creations with it, for the reason
+        its record and its decisions are excluded: the scan may have listed the log
+        before the deletion, and the state those rows would be popped from was still
+        empty, so nothing else would keep the removal.
+        """
+        merged = dict(scanned)
+        rank = log_rank_of(self._records.values())
+        for key, record in list(merged.items()):
+            if record.source_sid in self._forgotten_while_seeding:
+                merged.pop(key, None)
+        for key, held in self._created.items():
+            if held.source_sid in self._forgotten_while_seeding:
+                continue
+            scanned_record = merged.get(key)
+            if scanned_record is None or not created_supersedes(scanned_record, held, rank):
+                merged[key] = held
+        self._created = merged
+        self._evict_created_to_cap_locked()
+
     def _seed(self, live_sids: "tuple[str, ...]") -> None:
         """The body of :meth:`ensure_seeded`, so its caller owns one try/except."""
         with self._lock:
@@ -1162,13 +1497,24 @@ class SessionTreeProjection:
                 self._install_seed_edges_locked(
                     {(e.slot, e.sid): e for e in reading.edges if e.slot}
                 )
+                # Already retired by the scan's own reading: a row whose child has a log
+                # is not in ``reading.created``.
+                self._install_seed_created_locked(
+                    {
+                        (c.child_slot, c.source_sid): c
+                        for c in reading.created
+                        if c.child_slot and c.source_sid
+                    }
+                )
                 self._nodes = None
                 self._seeded = True
                 self._dirty = True
             self._schedule_checkpoint()
             return
         faults = _ScanFaults()
-        records, edges, scans, incomplete, over_cap = self._replay_tail(*loaded, faults=faults)
+        records, edges, created, scans, incomplete, over_cap = self._replay_tail(
+            *loaded, faults=faults
+        )
         with self._lock:
             self._incomplete = incomplete
             self._over_cap = over_cap
@@ -1176,6 +1522,7 @@ class SessionTreeProjection:
             self._unattributed_gap = faults.unattributed
             self._install_seed_locked(records)
             self._install_seed_edges_locked(edges)
+            self._install_seed_created_locked(created)
             # Kept only for units the merge actually holds, so the cache cannot outlive
             # the population it describes and grow without bound across boots.
             self._scans = {sid: ident for sid, ident in scans.items() if sid in self._records}
@@ -1188,7 +1535,10 @@ class SessionTreeProjection:
             # worth writing even when the tree itself did not move, since that is exactly
             # what spares the NEXT boot the read.
             moved = (
-                self._records != loaded[0] or self._edges != loaded[1] or self._scans != loaded[2]
+                self._records != loaded[0]
+                or self._edges != loaded[1]
+                or self._created != loaded[2]
+                or self._scans != loaded[3]
             )
             if moved:
                 self._dirty = True
@@ -1201,6 +1551,7 @@ class SessionTreeProjection:
         self,
         loaded: dict[str, OpenedRecord],
         loaded_edges: dict[tuple[str, str], EdgeRecord],
+        loaded_created: "dict[tuple[str, str], CreatedRecord] | None" = None,
         loaded_scans: "dict[str, ScanIdentity] | None" = None,
         *,
         faults: "_ScanFaults | None" = None,
@@ -1223,15 +1574,28 @@ class SessionTreeProjection:
         checkpoint authoritative for adoptions, and a stale one would leave a session
         hanging under a parent that released it with nothing to correct it.
 
-        Returns ``(records, edges, incomplete, over_cap)``. A listing that fails at all
-        makes the answer ``incomplete``: the records are still served, because a stale
-        edge renders as a root and that is the pre-existing degradation, but a reader
-        that DECIDES on an edge is told the reconciliation did not complete.
+        The CREATIONS ride on that same tail pass, read from the same whole-log walk
+        and gated by the same identity, because they share its shape exactly: a
+        creation sits in the middle of a log that goes on growing, so a unit already in
+        the checkpoint is as likely to hold one the checkpoint missed as a new unit is.
+        Reading them separately would double the walks per unit for one answer.
+
+        Returns ``(records, edges, created, scans, incomplete, over_cap)``. A listing
+        that fails at all makes the answer ``incomplete``: the records are still served,
+        because a stale edge renders as a root and that is the pre-existing degradation,
+        but a reader that DECIDES on an edge is told the reconciliation did not complete.
         """
-        from kiro_crew.crew_log.session_tree import TREE_UNIT_CAP, edge_record, opened_record
+        from kiro_crew.crew_log.session_tree import (
+            TREE_CREATED_PER_UNIT_CAP,
+            TREE_UNIT_CAP,
+            created_records,
+            edge_record,
+            opened_record,
+        )
         from kiro_crew.crew_log.store import (
             _checked_crew_log_root,
             find_last_tree_edge,
+            find_tree_created,
             oldest_segment,
             read_head,
             tree_edge_scan_identity,
@@ -1239,6 +1603,7 @@ class SessionTreeProjection:
 
         records = dict(loaded)
         edges = dict(loaded_edges)
+        created = dict(loaded_created or {})
         scans = dict(loaded_scans or {})
         incomplete = False
         try:
@@ -1251,7 +1616,7 @@ class SessionTreeProjection:
         except FileNotFoundError:
             # No store root yet: nothing has been written on this home. An absence, not
             # a fault, and the checkpoint's own records are all there is to serve.
-            return records, edges, scans, False, False
+            return records, edges, created, scans, False, False
         except OSError:
             logger.warning(
                 "session tree projection: the store root could not be listed, so its "
@@ -1260,16 +1625,18 @@ class SessionTreeProjection:
             )
             if faults is not None:
                 faults.unattributed = True
-            return records, edges, scans, True, False
+            return records, edges, created, scans, True, False
 
         held = {_store_name(sid): sid for sid in records}
         gone = [sid for name, sid in held.items() if name not in names]
         for sid in gone:
             records.pop(sid, None)
-            # A unit that is gone is not evidence for its slot's decisions, the same
-            # rule ``forget`` applies for the same reason.
+            # A unit that is gone is not evidence for its slot's decisions, nor for what
+            # it minted -- the same rule ``forget`` applies, for the same reason.
             for key in [k for k, edge in edges.items() if edge.sid == sid]:
                 edges.pop(key, None)
+            for key in [k for k, record in created.items() if record.source_sid == sid]:
+                created.pop(key, None)
         new = [name for name in names if name not in held]
         # The cap bounds this loop like every other loop over the population. Past it
         # the replay has not seen everything, which is what ``over_cap`` reports.
@@ -1304,6 +1671,16 @@ class SessionTreeProjection:
         # LOG speaks for a slot is the fold's single decision, made with the ranking it
         # derives from these same records.
         held_records = list(records.values())
+        # The slots that have a log of their own, after the removals and additions
+        # above. A provisional row for one of them is RETIRED rather than carried: the
+        # display join never consults it, and carrying it keeps its creator out of the
+        # negative scan cache for good -- so the creator's whole log would be re-read
+        # on every boot, and the creators with the largest logs are exactly the ones
+        # that mint. Computed once, before the per-unit pass, so the checkpoint's own
+        # rows are retired too and not only the ones just read.
+        slots_with_logs = {record.slot for record in held_records if record.slot}
+        for settled in [k for k in created if k[0] in slots_with_logs]:
+            created.pop(settled, None)
         if faults is not None:
             # Past the cap the pass below reads no decision, yet the record itself is
             # kept until the install evicts down to the cap -- and the one kept need not
@@ -1323,25 +1700,87 @@ class SessionTreeProjection:
                 if faults is not None:
                     faults.sids.append(record.sid)
                 continue
-            if identity is not None and key not in edges and scans.get(record.sid) == identity:
-                # An earlier complete read of these same bytes found no decision, and no
-                # decision is held for this unit to confirm or drop -- so the read would
-                # re-derive a verdict already in hand. This is the case that dominates a
-                # real store: most sessions are never adopted, and their logs stop
-                # changing once they close, while the read they would otherwise cost is
-                # proportional to the whole log rather than to a window of it.
+            holds_created = any(row.source_sid == record.sid for row in created.values())
+            if (
+                identity is not None
+                and key not in edges
+                and not holds_created
+                and scans.get(record.sid) == identity
+            ):
+                # An earlier complete read of these same bytes found no decision AND no
+                # minted child, and this unit holds neither for that read to confirm or
+                # drop -- so both reads would re-derive a verdict already in hand. This
+                # is the case that dominates a real store: most sessions are never
+                # adopted and most create nobody, and their logs stop changing once they
+                # close, while the reads they would otherwise cost are proportional to
+                # the whole log rather than to a window of it.
                 continue
+            # THE DECISION READ FIRST, and nothing below may skip it. It is the half
+            # that an ownership check and an adoption guard decide on: a unit whose
+            # decision was not read must leave the reading INCOMPLETE, or
+            # ``_slot_tree_parent`` serves a stale holder as a confident answer and the
+            # former creator can revive a child that was taken away from it. A fault in
+            # the creations read says nothing about the decision, so the two are read
+            # independently and neither one's failure costs the other its pass.
+            decision_read = True
+            found: "EdgeRecord | None" = None
             try:
                 # The WHOLE log, not a tail window: this is the cold path, so a decision
                 # it cannot reach is not recovered by anything later -- the fold would
                 # serve the creating edge for a session that has been moved.
                 entry = find_last_tree_edge(directory)
             except (OSError, ValueError):
+                decision_read = False
                 incomplete = True
                 if faults is not None:
                     faults.sids.append(record.sid)
+            else:
+                found = edge_record(record.slot, record.sid, entry)
+
+            created_read = True
+            created_entries: "list[Any]" = []
+            created_dropped = False
+            try:
+                # The whole log again, and all of it: a creation sits mid-log and every
+                # one of them is wanted, so there is no first-hit shortcut to take. The
+                # bound keeps the NEWEST, which are the children still waiting.
+                created_entries, created_dropped = find_tree_created(
+                    directory, TREE_CREATED_PER_UNIT_CAP
+                )
+            except (OSError, ValueError):
+                # Held rows are PRESERVED: a read that raised proves nothing about them,
+                # and dropping a pending child's row over a transient fault is the one
+                # outcome this layer exists to avoid. Reported in the log and nowhere
+                # else -- never on ``incomplete`` or the suspect list, which a reader
+                # deciding on an edge refuses for. See ``apply_created``.
+                created_read = False
+                logger.warning(
+                    "session tree: crew log unit %s could not be read for the children "
+                    "it minted, so a child of it that has not run yet may show with no "
+                    "creator until it does",
+                    record.sid,
+                    exc_info=True,
+                )
+            fresh_created = created_records(record.sid, created_entries)
+            # Retired on the way in, so a settled child's row is neither installed nor
+            # written to the checkpoint, and this creator can re-enter the scan cache.
+            fresh_pending = [row for row in fresh_created if row.child_slot not in slots_with_logs]
+            if created_read and not created_dropped:
+                # THE DISK DECIDES for this unit, and only when the read was COMPLETE
+                # for it: a row the checkpoint carries that the log does not hold has
+                # been retained out of the log and must not outlive it. A read that
+                # raised or was truncated proves no such thing -- the row it is missing
+                # may be one of the older ones dropped to fit -- so the held rows stay.
+                for stale in [k for k, row in created.items() if row.source_sid == record.sid]:
+                    created.pop(stale, None)
+            for row in fresh_pending:
+                created[(row.child_slot, record.sid)] = row
+
+            if not decision_read:
+                # Already reported incomplete and the unit named. The held decision is
+                # LEFT ALONE: dropping it on an unreadable directory would discard a
+                # valid edge over a transient error.
                 continue
-            found = edge_record(record.slot, record.sid, entry)
             if found is None:
                 # The read SUCCEEDED and found no decision, which is a verdict rather
                 # than a gap: this log does not record one, so a decision the checkpoint
@@ -1349,19 +1788,35 @@ class SessionTreeProjection:
                 # it. Keeping it would pin the slot under a parent with nothing on disk
                 # behind it, and no later scan would ever contradict it -- a complete
                 # read that finds nothing is the only thing that can, and it is here.
-                # A read that RAISED took the branch above and leaves the edge alone.
                 edges.pop(key, None)
-                if identity is not None:
-                    # Remembered so the next boot can reach this same verdict without the
-                    # read. Only the NEGATIVE verdict is worth caching: a decision that
-                    # was found is carried by ``edges`` itself.
+                if fresh_pending or created_dropped or not created_read:
+                    # This unit holds a creation still worth keeping, or its creations
+                    # could not all be read -- either way the verdict is not the
+                    # negative one and any entry claiming otherwise is void.
+                    scans.pop(record.sid, None)
+                elif identity is not None:
+                    # Remembered so the next boot can reach this same verdict without
+                    # either read. Only the NEGATIVE verdict is worth caching, and it is
+                    # negative on BOTH axes: no decision, and no creation whose child
+                    # still lacks a log. An entry meaning only "no decision" would make
+                    # the next boot skip the creations read for a unit that has some,
+                    # which is why the version gate keeps the older file out.
+                    #
+                    # The second half is a verdict about the bytes AND about which
+                    # children have logs, and that second part can change without these
+                    # bytes changing -- a child's log retained away, then the child
+                    # revived from the trash. The cost in that corner is that the
+                    # revived child renders with no creator, which is the pre-existing
+                    # "no creator known" rather than a wrong edge; the alternative is
+                    # re-reading every prolific creator's whole log on every boot for
+                    # the life of the gateway.
                     scans[record.sid] = identity
                 continue
             scans.pop(record.sid, None)
             candidate = edges.get(key)
             if candidate is None or edge_supersedes(found, candidate, None):
                 edges[key] = found
-        return records, edges, scans, incomplete or over_cap, over_cap
+        return records, edges, created, scans, incomplete or over_cap, over_cap
 
     # ── the checkpoint ─────────────────────────────────────────────────────
 
@@ -1527,6 +1982,10 @@ class SessionTreeProjection:
                 "root": self._root or _current_root(),
                 "records": [_record_to_json(r) for r in self._records.values()],
                 "edges": [_edge_to_json(e) for e in self._edges.values()],
+                # The provisional edges: one row per child a creator minted and whose
+                # own log has not landed. Written so a restart inside that window does
+                # not un-nest every worker a lead dispatched just before it.
+                "created": [_created_to_json(c) for c in self._created.values()],
                 # The unit identities at which a complete read found NO decision, so the
                 # next boot can skip re-deriving that per unit. A cache, never evidence:
                 # see ``_scans``.
@@ -1551,7 +2010,7 @@ class SessionTreeProjection:
         deliberate shutdown -- rather than whenever the debounce elapses.
         """
         with self._lock:
-            if not self._records and not self._edges and not self._dirty:
+            if not self._records and not self._edges and not self._created and not self._dirty:
                 return False
             payload = {
                 "ver": CHECKPOINT_VERSION,
@@ -1559,6 +2018,10 @@ class SessionTreeProjection:
                 "root": self._root or _current_root(),
                 "records": [_record_to_json(r) for r in self._records.values()],
                 "edges": [_edge_to_json(e) for e in self._edges.values()],
+                # The provisional edges: one row per child a creator minted and whose
+                # own log has not landed. Written so a restart inside that window does
+                # not un-nest every worker a lead dispatched just before it.
+                "created": [_created_to_json(c) for c in self._created.values()],
                 # The unit identities at which a complete read found NO decision, so the
                 # next boot can skip re-deriving that per unit. A cache, never evidence:
                 # see ``_scans``.
@@ -1577,8 +2040,8 @@ class SessionTreeProjection:
 
 
 def _load_checkpoint() -> "_LoadedCheckpoint | None":
-    """The checkpoint's records, decisions and scan cache, or ``None`` when there is no
-    usable one.
+    """The checkpoint's records, decisions, creations and scan cache, or ``None`` when
+    there is no usable one.
 
     ``None`` is every failure, undifferentiated on purpose: absent, unreadable,
     oversized, unparseable, wrong ``ver``, or a payload whose shape this does not
@@ -1630,6 +2093,14 @@ def _load_checkpoint() -> "_LoadedCheckpoint | None":
     edge_rows = payload.get("edges")
     if not isinstance(edge_rows, list):
         return None
+    # PRESENT for the reason ``edges`` must be, and the same one wrong answer is at
+    # stake: the version gate admits only a file this build wrote, this build writes the
+    # key whether or not anything has been minted, so a payload lacking it is damaged
+    # rather than old -- and read as "nobody created anybody" it would look exactly like
+    # the truth on a quiet gateway while un-nesting every pending child on a busy one.
+    created_rows = payload.get("created")
+    if not isinstance(created_rows, list):
+        return None
     # Same reasoning as ``edges`` for the key having to be PRESENT, and the opposite
     # reasoning for a malformed VALUE inside it: this one is a cache, so a row that does
     # not parse is dropped and its unit is simply re-read, where dropping a decision row
@@ -1647,6 +2118,11 @@ def _load_checkpoint() -> "_LoadedCheckpoint | None":
         edge = _edge_from_json(raw)
         if edge is not None:
             edges[(edge.slot, edge.sid)] = edge
+    created: dict[tuple[str, str], CreatedRecord] = {}
+    for raw in created_rows:
+        made = _created_from_json(raw)
+        if made is not None:
+            created[(made.child_slot, made.source_sid)] = made
     scans: dict[str, ScanIdentity] = {}
     for sid, raw in scan_rows.items():
         if not isinstance(sid, str) or not sid:
@@ -1656,7 +2132,7 @@ def _load_checkpoint() -> "_LoadedCheckpoint | None":
         if not all(isinstance(part, int) and not isinstance(part, bool) for part in raw):
             continue
         scans[sid] = (raw[0], raw[1], raw[2], raw[3])
-    return records, edges, scans
+    return records, edges, created, scans
 
 
 def _save_checkpoint(payload: dict[str, Any], path: "Path | None" = None) -> bool:
@@ -1848,6 +2324,37 @@ def record_released(sid: str, slot: str, at: int, seq: int = 0) -> None:
         # Rendered text, never ``exc_info``, for the same reason.
         log_exception_text(
             logger, logging.DEBUG, "session tree projection could not apply a release"
+        )
+
+
+def record_created(source_sid: str, child_slot: str, at: int, seq: int = 0) -> None:
+    """Fold a just-committed ``session/created`` into the projection.
+
+    The emitter's door for a mint, taking the values it just wrote rather than a
+    :class:`CreatedRecord` so that module does not have to import the record type --
+    the shape :func:`record_opened` and :func:`record_adopted` have, for the same
+    reason.
+
+    ``seq`` is the written line's position in the creator's log, and it is what orders
+    this statement against the others from that log without consulting a clock. ``at``
+    rides along as the audit reading.
+
+    Never raises: an append that already succeeded must not be reported as failed
+    because the memory image of it did not land, and a statement the projection missed
+    is recovered by the tail replay on the next cold start.
+    """
+    if not source_sid or not child_slot:
+        return
+    try:
+        projection().apply_created(
+            CreatedRecord(child_slot=child_slot, source_sid=source_sid, at=at, seq=seq)
+        )
+    except Exception:  # pragma: no cover -- defensive
+        # Rendered text, never ``exc_info``, for the reason :func:`record_opened` gives:
+        # the caller is the emitter's writer job and a retained traceback reaches its
+        # live ``CrewLog`` through ``tb_frame.f_back``.
+        log_exception_text(
+            logger, logging.DEBUG, "session tree projection could not apply a creation"
         )
 
 
