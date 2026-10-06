@@ -312,17 +312,17 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
                 )
             updates["use_builtin_browser"] = val
         if "verbosity" in body:
-            val = body["verbosity"]
-            if val not in ("default", "concise", "ultra", "answer_only"):
+            from kiro_crew.config.sections import VERBOSITY_LEVELS, normalize_verbosity
+
+            # An older client may still send the retired ``ultra``; store
+            # what it now means instead of rejecting the write.
+            val = normalize_verbosity(body["verbosity"])
+            if val not in VERBOSITY_LEVELS:
                 _sel().log_tool_invocation(
                     session_key="dashboard", tool_name="dashboard_config_write", outcome="failure"
                 )
                 return web.json_response(
-                    {
-                        "error": (
-                            "verbosity must be 'default', 'concise', 'ultra' " "or 'answer_only'"
-                        )
-                    },
+                    {"error": "verbosity must be 'default', 'concise' or 'answer_only'"},
                     status=400,
                 )
             updates["verbosity"] = val
