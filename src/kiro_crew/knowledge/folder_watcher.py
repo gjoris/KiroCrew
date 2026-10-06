@@ -328,6 +328,22 @@ def estimate_scan_cost(discovered: list[tuple[str, float]], *,
             "llm_calls": chunks + len(ordered)}
 
 
+def _matches_ignore_patterns(file_path: str, root: str, ignore_patterns: list[str]) -> bool:
+    """Whether *file_path* under *root* matches one of *ignore_patterns*.
+
+    Same rule as ``FolderWatcher._walk``: the root-relative path with ``/``
+    separators, matched case-sensitively with ``fnmatchcase``.
+    """
+    try:
+        rel = os.path.relpath(file_path, root)
+    except ValueError:  # different drive on Windows
+        return False
+    if rel.startswith(".."):
+        return False
+    rel = rel.replace(os.sep, "/")
+    return any(fnmatchcase(rel, pat) for pat in ignore_patterns)
+
+
 class FolderWatcher:
     """Recursively scans a directory source, tracks file state, triggers ingestion."""
 
@@ -449,9 +465,17 @@ class FolderWatcher:
         ingested_paths: list[str] = []  # files (re)ingested this scan, for targeted dedup
         chunks_ingested = 0  # against chunk_budget
 
-        # 4. Detect deleted files (use full set, not capped set, to avoid false deletions)
+        # 4. Detect deleted files (use full set, not capped set, to avoid false deletions).
+        # A tracked file that still exists but now matches ``ignore_patterns`` is
+        # RETAINED: editing the patterns stops new ingestion, and removing what
+        # is already indexed is the explicit ``purge_ignored`` step, not a side
+        # effect of the next sweep.
+        retain_patterns = filters["ignore_patterns"]
         for file_path in list(existing.keys()):
             if file_path not in all_discovered_paths:
+                if (retain_patterns and Path(file_path).is_file()
+                        and _matches_ignore_patterns(file_path, uri, retain_patterns)):
+                    continue
                 await self._handle_deleted(source_id, file_path, existing[file_path])
                 stats["deleted"] += 1
 
@@ -931,6 +955,29 @@ class FolderWatcher:
             except Exception:
                 return False
         return bool((props or {}).get("scan_paused"))
+
+    async def purge_ignored(self, source_id: str, root: str, ignore_patterns: list[str]) -> int:
+        """Remove the indexed items of tracked files that match *ignore_patterns*.
+
+        The opt-in counterpart of the retention in ``_do_scan``: called when the
+        user asks for already-indexed matches to be removed. Goes through the
+        deleted-file path so a copy another source holds survives, and holds the
+        same per-source lock as ``scan_source`` so it never races a sweep over
+        the same state rows. Returns the number of files purged.
+        """
+        if not ignore_patterns:
+            return 0
+        if source_id not in self._locks:
+            self._locks[source_id] = asyncio.Lock()
+        async with self._locks[source_id]:
+            existing = await asyncio.to_thread(self._load_state, source_id)
+            purged = 0
+            for file_path, state in existing.items():
+                if _matches_ignore_patterns(file_path, root, ignore_patterns):
+                    await self._handle_deleted(source_id, file_path, state)
+                    purged += 1
+        logger.info("Purged %d newly ignored file(s) from source %s", purged, source_id)
+        return purged
 
     async def _handle_deleted(self, source_id: str, file_path: str, state: dict):
         """Archive items for a deleted file and remove state row."""
