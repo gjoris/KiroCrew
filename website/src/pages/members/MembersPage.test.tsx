@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PREVIEW_DASHBOARD, setPreviewFlag } from '../../utils/previewFlags'
 import { useState } from 'react'
-import { screen, fireEvent, waitFor, act, within, getConfig } from '@testing-library/react'
+import { screen, fireEvent, waitFor, act, within } from '@testing-library/react'
+import { namedCeiling } from '../../test/namedCeiling'
 import { defaultScheduler, notifyManager } from '@tanstack/react-query'
 import { CREWMATES_PAGE_ENTERED_EVENT } from '../../components/MeetCrewmatesFlow'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
@@ -285,31 +286,11 @@ function echoThread(slug: string) {
 }
 
 /**
- * A named lost-run ceiling for waitFor/findBy (website/docs/testing.md). A wait
- * that runs out fails BY NAME and says how long it really waited, so a starved
- * runner reads as "PANE_READY ran out after 5310 ms" rather than as a missing
- * element. Testing Library reads `timeout` once, as a wait starts, which is when
- * the elapsed time starts.
- */
-function namedCeiling(name: string, timeout: number) {
-  let startedAt = 0
-  return {
-    get timeout() {
-      startedAt = performance.now()
-      return timeout
-    },
-    onTimeout: (error: Error) =>
-      getConfig().getElementError(
-        `${name} (${timeout} ms) ran out after ${Math.round(performance.now() - startedAt)} ms: ${error.message}`,
-        document.body,
-      ),
-  }
-}
-
-/**
  * Ceiling for a wait on the chat pane, or on anything an open or a create's
  * follow-up produces (the pane, its viewed-thread registration, an open-failure
- * notice, the roster re-read, the seeded greeting). `renderPage`
+ * notice, the roster re-read, the seeded greeting, a team view's inbox cards
+ * behind its thread POST and slot-detail read, the Dashboard tab's own
+ * member-panel read). `renderPage`
  * returns once the roster fetch has been ISSUED; the pane sits behind a real
  * chain after that -- members resolve, the roster commits, the open (a
  * remembered restore, a ?member= URL, a click, or the crewmate a create hands
@@ -4333,6 +4314,7 @@ describe('MembersPage default member, memory and URL', () => {
     expect(await screen.findByTestId('chat-pane-stub', undefined, PANE_READY)).toHaveTextContent('member-alpha')
     expect(screen.getByTestId('member-gone-notice')).toHaveTextContent(/^Showing alpha/)
     expect(currentUrl()).toBe('/members?member=alpha')
+    // The Dashboard tab beside the pane settles on its own member-panel read.
     await screen.findByTestId('crew-webview-empty', undefined, PANE_READY)
     expect(screen.queryByRole('alert')).toBeNull()
     // The stand-in open is the page's choice, not the user's: one stale link
