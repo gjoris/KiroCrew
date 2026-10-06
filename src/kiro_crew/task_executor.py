@@ -206,6 +206,22 @@ _VOLATILE_PATTERNS = (
     re.compile(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b"),
 )
 _VOLATILE_WS_RE = re.compile(r"\s+")
+#: pytest parametrize ids are bracketed node-id spans (``test_x[2s]``,
+#: ``test_x[1h-cold]``). They are identity, not noise: ``[1s]`` and ``[2s]`` are
+#: the next case of a steadily-advancing run, and a duration/port/hex volatile
+#: pattern would otherwise collapse them so the third failure trips loop
+#: detection and overwrites the real error with "Loop detected". Bracketed spans
+#: are lifted out before masking and restored after, so volatile forms are still
+#: masked everywhere EXCEPT inside a node-id's ``[...]``.
+_NODE_ID_PARAM_RE = re.compile(r"\[[^\[\]]*\]")
+#: Matches the stable placeholders ``_lift`` leaves behind (``\x00<ordinal>\x00``)
+#: so the lifted spans can be restored in a single linear pass. The ordinal is
+#: bounded to at most six digits -- far more than the span count any real error
+#: produces -- so a NUL-delimited digit run in the RAW error (e.g. UTF-16 output
+#: decoded with ``errors="replace"``) can never present an unbounded integer to
+#: the restore step. A longer or differently shaped run simply does not match
+#: and is left untouched.
+_PLACEHOLDER_RE = re.compile("\x00(\\d{1,6})\x00")
 
 
 def _error_fingerprint(error: str) -> str:
@@ -225,8 +241,39 @@ def _error_fingerprint(error: str) -> str:
         text = "\n".join(summary)
     else:
         text = "\n".join(error.splitlines()[:_ERROR_FINGERPRINT_LINES])
+    # Lift bracketed pytest parametrize ids out before masking so a volatile
+    # pattern (e.g. the duration mask) cannot collapse ``test_x[1s]`` and
+    # ``test_x[2s]`` into one fingerprint; they are the next case of an
+    # advancing run, not a loop. Each span is replaced by a stable placeholder
+    # keyed on its ordinal and restored verbatim after masking.
+    protected: list[str] = []
+
+    def _lift(match: "re.Match[str]") -> str:
+        protected.append(match.group(0))
+        return f"\x00{len(protected) - 1}\x00"
+
+    text = _NODE_ID_PARAM_RE.sub(_lift, text)
     for pattern in _VOLATILE_PATTERNS:
         text = pattern.sub("#", text)
+
+    # Restore every placeholder in a single linear pass. A per-span
+    # ``text.replace`` is quadratic in the text length -- it rescans the whole
+    # string once per protected span -- so one long error line (many bracketed
+    # spans over a long body) can stall the event loop long enough for the
+    # watchdog to kill the gateway. One regex substitution with a callback is
+    # linear and keyed on the span's own ordinal. ``_restore`` is total by
+    # construction: ``_PLACEHOLDER_RE`` only matches a bounded digit run, and a
+    # run that is out of range for the lifted spans is returned verbatim. A
+    # NUL-delimited digit run in the raw error that ``_lift`` never created
+    # therefore passes through unchanged instead of indexing out of range or
+    # parsing an unbounded integer.
+    def _restore(match: "re.Match[str]") -> str:
+        ordinal = int(match.group(1))
+        if ordinal < len(protected):
+            return protected[ordinal]
+        return match.group(0)
+
+    text = _PLACEHOLDER_RE.sub(_restore, text)
     text = _VOLATILE_WS_RE.sub(" ", text).strip()
     if len(text) > _ERROR_FINGERPRINT_LEN:
         return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
