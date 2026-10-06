@@ -9419,6 +9419,20 @@
     "theme": {
       "high_contrast": "🔆 Hoher Kontrast"
     },
+    "useCloseSessionTree": {
+      "body": "{{running}} von {{number}} Sitzungen laufen noch. Beende sie zuerst oder warte, bis sie fertig sind, dann schliesse erneut.",
+      "dismiss": "OK",
+      "finished": "Abgeschlossen",
+      "level": "{{depth}} Ebenen darunter verschachtelt",
+      "level_self": "Diese Sitzung",
+      "pref_body": "Das Schliessen schliesst auch {{total}} verschachtelte Sitzungen.",
+      "pref_confirm": "Alle {{number}} schliessen",
+      "pref_title": "Diese Sitzung und alles darunter schliessen?",
+      "refused": "Noch offen: {{names}}. Sie erneut zu schließen funktioniert meist.",
+      "refused_title": "Einige Sitzungen wurden nicht geschlossen",
+      "running": "Läuft",
+      "title": "Einige Worker dieser Sitzung laufen noch"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "Job konnte nicht abgebrochen werden",
       "failed_to_pause_job": "Job konnte nicht pausiert werden",

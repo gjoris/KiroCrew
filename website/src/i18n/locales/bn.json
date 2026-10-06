@@ -9419,6 +9419,20 @@
     "theme": {
       "high_contrast": "🔆 উচ্চ কনট্রাস্ট"
     },
+    "useCloseSessionTree": {
+      "body": "{{number}}-এর মধ্যে {{running}}টি সেশন এখনও চলছে। প্রথমে সেগুলো বন্ধ করো বা শেষ হতে দাও, তারপর আবার বন্ধ করো।",
+      "dismiss": "ঠিক আছে",
+      "finished": "সম্পন্ন",
+      "level": "{{depth}} স্তর নিচে নেস্ট করা",
+      "level_self": "এই সেশন",
+      "pref_body": "এটি বন্ধ করলে নিচে নেস্ট করা {{total}}টি সেশনও বন্ধ হবে।",
+      "pref_confirm": "সব {{number}}টি বন্ধ করো",
+      "pref_title": "এই সেশন ও এর নিচের সবকিছু বন্ধ করবে?",
+      "refused": "এখনও খোলা: {{names}}। আবার বন্ধ করলে সাধারণত কাজ হয়।",
+      "refused_title": "কিছু সেশন বন্ধ হয়নি",
+      "running": "চলছে",
+      "title": "এই সেশনের নিচের কিছু worker এখনও চলছে"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "জব বাতিল করা যায়নি",
       "failed_to_pause_job": "কাজটি বিরতি দেওয়া যায়নি",

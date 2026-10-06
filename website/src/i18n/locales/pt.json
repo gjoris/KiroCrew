@@ -9545,6 +9545,20 @@
     "theme": {
       "high_contrast": "🔆 Alto contraste"
     },
+    "useCloseSessionTree": {
+      "body": "{{running}} de {{number}} sessões ainda estão em execução. Pare-as ou aguarde o término antes de fechar.",
+      "dismiss": "OK",
+      "finished": "Concluída",
+      "level": "Aninhado {{depth}} abaixo",
+      "level_self": "Esta sessão",
+      "pref_body": "Fechar isto também fecha {{total}} sessões aninhadas.",
+      "pref_confirm": "Fechar todas ({{number}})",
+      "pref_title": "Fechar esta sessão e tudo abaixo dela?",
+      "refused": "Ainda abertas: {{names}}. Fechá-las de novo costuma funcionar.",
+      "refused_title": "Algumas sessões não foram fechadas",
+      "running": "Em execução",
+      "title": "Alguns workers ainda estão em execução"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "Falha ao cancelar o job",
       "failed_to_pause_job": "Falha ao pausar o trabalho",

@@ -9545,6 +9545,20 @@
     "theme": {
       "high_contrast": "🔆 Contrasto elevato"
     },
+    "useCloseSessionTree": {
+      "body": "{{running}} sessioni su {{number}} sono ancora in esecuzione. Fermale o aspetta il completamento, poi chiudi di nuovo.",
+      "dismiss": "OK",
+      "finished": "Completata",
+      "level": "Annidato {{depth}} sotto",
+      "level_self": "Questa sessione",
+      "pref_body": "Chiudere questo chiude anche {{total}} sessioni annidate.",
+      "pref_confirm": "Chiudi tutte ({{number}})",
+      "pref_title": "Chiudere questa sessione e tutto ciò che sta sotto?",
+      "refused": "Ancora aperte: {{names}}. Chiuderle di nuovo funziona di solito.",
+      "refused_title": "Alcune sessioni non si sono chiuse",
+      "running": "In esecuzione",
+      "title": "Alcuni worker di questa sessione sono ancora in esecuzione"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "Impossibile annullare il job",
       "failed_to_pause_job": "Impossibile mettere in pausa il job",

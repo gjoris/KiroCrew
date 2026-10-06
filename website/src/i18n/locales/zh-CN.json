@@ -9293,6 +9293,20 @@
     "theme": {
       "high_contrast": "🔆 高对比度"
     },
+    "useCloseSessionTree": {
+      "body": "{{number}} 个会话中有 {{running}} 个仍在运行。请先停止或等待它们完成，再重新关闭。",
+      "dismiss": "好",
+      "finished": "已完成",
+      "level": "向下嵌套 {{depth}} 层",
+      "level_self": "此会话",
+      "pref_body": "关闭此会话也会关闭其下嵌套的 {{total}} 个会话。",
+      "pref_confirm": "全部关闭（{{number}}）",
+      "pref_title": "关闭此会话及其下所有会话？",
+      "refused": "仍然打开：{{names}}。再关一次通常就可以了。",
+      "refused_title": "有些会话没有关闭",
+      "running": "运行中",
+      "title": "此会话下有 worker 仍在运行"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "取消任务失败",
       "failed_to_pause_job": "暂停任务失败",

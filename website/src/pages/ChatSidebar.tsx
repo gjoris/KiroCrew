@@ -48,6 +48,7 @@ import { useReducedMotion } from '../hooks/useReducedMotion'
 import { useSimplifiedToolNames } from '../hooks/useSimplifiedToolNames'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useSessionActions } from '../hooks/useSessionActions'
+import { useCloseSessionTree } from '../hooks/useCloseSessionTree'
 import { useChatPopouts } from '../hooks/useChatPopouts'
 import { platformShortcut } from '../utils/platform'
 import { useImeGuard } from '../hooks/useImeGuard'
@@ -1620,10 +1621,15 @@ const SessionRow = memo(function SessionRow({
       mode,
       onRename: () => onRenameStart(rowKey, scope, rowTitle && rowTitle !== rowKey ? rowTitle : '', true),
       onOpenInNewTab: onOpenSlotInNewTab ? () => onOpenSlotInNewTab(rowKey) : undefined,
+      // The same close the row's ✕ performs, also scoped to the conductor lane:
+      // `treeClose` resolves to `closeSessionTree` there and `sessionActions.close`
+      // everywhere else, so the menu never silently collapses a subtree that is
+      // not visible in the current lane.
+      onClose: onCloseSession,
       // A row menu opens from inside this panel, where the folder-order banner
       // (when there is one) sits over the tree -- the menu need not repeat it.
       sidebarOnScreen: true,
-    }), [rowKey, mode, onRenameStart, scope, rowTitle, onOpenSlotInNewTab])
+    }), [rowKey, mode, onRenameStart, scope, rowTitle, onOpenSlotInNewTab, onCloseSession])
     const rowActions = useMemo(() => (void langGen, !renamingHere && !foreignRow ? (isMobile ? (
       <div className="absolute top-1/2 -translate-y-1/2 right-1.5 flex items-center gap-0.5">
         <DropdownMenu>
@@ -3233,6 +3239,25 @@ function ChatSidebar({
   // each behaviour has one definition. Rename + Tags stay local (they drive this
   // component's inline-edit + tag-popover state).
   const sessionActions = useSessionActions(mode)
+  // The row ✕ closes the card AND the sessions nested under it, so on a lead it can
+  // end several workers' turns at once. `useCloseSessionTree` owns that: it plans the
+  // subtree from the same lineage edges this lane nests by, asks before destroying
+  // work still in flight, and falls back to `sessionActions.close` verbatim for a card
+  // with nothing under it (#17253). `runningSet` is passed as the predicate so the
+  // dialog marks exactly the rows the lane draws as running.
+  // Passed plain, not memoized: the hook reads its inputs through a ref so that
+  // `closeSessionTree` keeps one identity for the sidebar's life, which is what
+  // lets it ride into each row's memoized menu props without busting the row memo.
+  const { closeSessionTree, closeTreeDialog, closeTreeError } = useCloseSessionTree({
+    rows: localSlots,
+    isRunning: (s: Slot) => runningSet.has(s.key),
+    closeOne: sessionActions.close,
+  })
+  // The tree-close guard is scoped to the conductor lane: tree nesting is only
+  // visible there. In the flat, folder and board lanes the user sees no nested
+  // structure, so pressing ✕ on a session in those lanes should close exactly
+  // that one session, as it always has.
+  const treeClose = conductorLaneActive ? closeSessionTree : sessionActions.close
   // Which sessions are currently open in a popped-out window (shared singleton).
   const { poppedOut } = useChatPopouts()
   const {
@@ -3627,7 +3652,7 @@ function ChatSidebar({
         renameInputRef={renameInputRef}
         onRenameStart={onRenameStart} onRenameChange={onRenameChange}
         onRenameCommit={onRenameCommit} onRenameCancel={onRenameCancel}
-        onDuplicate={sessionActions.duplicate} onCloseSession={sessionActions.close}
+        onDuplicate={sessionActions.duplicate} onCloseSession={treeClose}
         onMenuCloseAutoFocus={onMenuCloseAutoFocus} onSelectSlot={onSelectSlot}
         onOpenElsewhere={openElsewhere}
         onOpenSlotInNewTab={onOpenSlotInNewTab} onOpenSource={onOpenSource}
@@ -5585,6 +5610,11 @@ function ChatSidebar({
         className="mx-2 mt-2 shrink-0"
         testId="folder-action-error"
       />
+      {/* A confirmed subtree close that the server refused per session. It sits in
+       *  this same band because it is the same kind of fact: a write on the rows
+       *  below failed, the list already agrees with what did happen, and the row
+       *  staying put is the only other trace the person would get. */}
+      {closeTreeError}
       {/* The folder order (dashboard.folder_sort) could not be read AND there is
        *  no body to fall back on: the tree is drawn in the stored order meanwhile
        *  and sibling drags are withdrawn, so the person is told why the order they
@@ -6838,6 +6868,11 @@ function ChatSidebar({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* The close-tree confirm, one instance for the whole sidebar: a press lands
+       *  on one row at a time, and the hook already answers an earlier ask "no"
+       *  when a second arrives. */}
+      {closeTreeDialog}
 
       {/* One folder create/settings modal for the whole sidebar. Rendered here
        *  rather than per-row so a folder shown in several board columns can only

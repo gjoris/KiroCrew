@@ -9545,6 +9545,20 @@
     "theme": {
       "high_contrast": "🔆 Contraste élevé"
     },
+    "useCloseSessionTree": {
+      "body": "{{running}} session(s) sur {{number}} sont encore en cours. Arrête-les ou attends la fin, puis ferme à nouveau.",
+      "dismiss": "OK",
+      "finished": "Terminée",
+      "level": "Imbriqué {{depth}} en dessous",
+      "level_self": "Cette session",
+      "pref_body": "Fermer ceci ferme aussi {{total}} sessions imbriquées.",
+      "pref_confirm": "Tout fermer ({{number}})",
+      "pref_title": "Fermer cette session et tout ce qu’elle contient ?",
+      "refused": "Toujours ouvertes : {{names}}. Les fermer à nouveau suffit généralement.",
+      "refused_title": "Certaines sessions ne se sont pas fermées",
+      "running": "En cours",
+      "title": "Des workers de cette session sont encore en cours"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "Échec de l’annulation de la tâche",
       "failed_to_pause_job": "Échec de la mise en pause de la tâche",

@@ -3844,6 +3844,20 @@
       "microphone_permission_denied_allow_mic_access_in": "Microphone permission denied. Allow mic access in your OS and browser settings.",
       "no_microphone_found_connect_one_or_pick_a_differ": "No microphone found. Connect one or pick a different device in Settings."
     },
+    "useCloseSessionTree": {
+      "body": "{{running}} of {{number}} sessions are still running. Stop or finish them first, then close again.",
+      "dismiss": "OK",
+      "finished": "Finished",
+      "level": "Nested {{depth}} deep",
+      "level_self": "This session",
+      "pref_body": "Closing this also closes {{total}} sessions nested under it.",
+      "pref_confirm": "Close all {{number}}",
+      "pref_title": "Close this session and everything under it?",
+      "refused": "Still open: {{names}}. Closing them again usually works.",
+      "refused_title": "Some sessions did not close",
+      "running": "Running",
+      "title": "Some workers under this session are still running"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "Failed to cancel job",
       "failed_to_pause_job": "Failed to pause job",

@@ -9293,6 +9293,20 @@
     "theme": {
       "high_contrast": "🔆 高コントラスト"
     },
+    "useCloseSessionTree": {
+      "body": "{{number}} 件のうち {{running}} 件がまだ実行中です。先に停止するか完了を待ってから、再度閉じてください。",
+      "dismiss": "OK",
+      "finished": "完了",
+      "level": "{{depth}} 階層下にネスト",
+      "level_self": "このセッション",
+      "pref_body": "閉じると、配下にネストされた {{total}} 件のセッションも閉じます。",
+      "pref_confirm": "すべて閉じる（{{number}}）",
+      "pref_title": "このセッションとその配下すべてを閉じますか？",
+      "refused": "まだ開いています：{{names}}。もう一度閉じれば通常は成功します。",
+      "refused_title": "一部のセッションは閉じませんでした",
+      "running": "実行中",
+      "title": "このセッションの配下でワーカーがまだ実行中です"
+    },
     "useCronActions": {
       "failed_to_cancel_job": "ジョブのキャンセルに失敗しました",
       "failed_to_pause_job": "ジョブを一時停止できませんでした",
