@@ -91,7 +91,11 @@ Three structural facts explain most of the rest:
   the merge queue.** `PR Readiness` is the one required status: on a pull
   request head it aggregates every lane, and on a merge group it is the queue's
   own check (next bullet). Individual red
-  checks are strong signals a human can weigh.
+  checks are strong signals a human can weigh. Whether the queue is actually
+  required is a ruleset setting no PR diff shows, so the scheduled
+  `merge-queue-ruleset.yml` reads main's live rules every 6 hours
+  (`scripts/check_merge_queue_ruleset.py`) and goes red when `merge_queue` is
+  not among them; `scheduled-failure-watch.yml` turns that red into one issue.
 - **Merge queue:** every test workflow runs on `merge_group`, the tree that
   actually lands: `ci.yml`, `fast-gate.yml` and `build.yml` on the fleet with
   the diff-scoped gates diffing against the group's `merge_group.base_sha`,
