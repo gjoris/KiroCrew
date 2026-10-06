@@ -39,6 +39,7 @@ from kiro_crew.agent_sdk.drivers.acp_vocab import (  # noqa: F401 - STOP_* resol
     STOP_CLASS_FAILED,
     STOP_CLASS_SUCCEEDED,
     STOP_RECOVERY_MAX_RETRIES,
+    TERMINAL_TOOL_STATUSES,
     classify_stop_reason,
     is_runtime_death,
 )
@@ -2618,7 +2619,13 @@ class SubagentInfo:
     # liveness oracle key evidence to THIS subagent's own child process (by
     # cmdline match) instead of to the whole runtime subtree — which, on a
     # session-shared runtime, is dominated by kiro-cli's own background I/O.
+    # It is the most recently dispatched call still in flight, and None only
+    # when none of this agent's own calls is.
     _inflight_tool: Any = None
+    # Every dispatched call by toolCallId until its terminal result. Parallel
+    # calls finish in any order, so a fast call returning first must not drop
+    # the attribution of a slower one still running beside it (a wait).
+    _active_tool_calls: dict[str, Any] = field(default_factory=dict)
     # Per-agent liveness oracle. One instance PER AGENT is required, not one per
     # manager: the oracle keys its counter samples by kind ("io"/"cpu"), not by
     # pid, so a shared instance would let one agent's sample become another's
@@ -4216,8 +4223,15 @@ class SubagentManager:
         movement walk still running against the PREVIOUS tool's command holds a
         reference to the old instance, and clearing in place would let its late
         write land on the new tool's baseline and read as movement.
+
+        The call is also kept by toolCallId in ``_active_tool_calls`` until its
+        terminal result, so a parallel call that finishes first hands the slot
+        back to one still running instead of emptying it. A native child's call
+        (``sub_session_id`` set, from a permission request) is judged but gets no
+        entry: its results go to the backend's own session and never reach this
+        loop, so nothing would ever close it.
         """
-        info._inflight_tool = ToolCallState(
+        state = ToolCallState(
             title=event.title or "",
             command=event.tool_input or "",
             dispatch_ts=time.monotonic(),
@@ -4237,30 +4251,59 @@ class SubagentManager:
                 else ""
             ),
         )
-        oracle = info._stall_oracle
-        info._stall_oracle = oracle.fresh() if oracle is not None else None
-        info._stall_gen += 1
+        if not getattr(event, "sub_session_id", ""):
+            info._active_tool_calls[getattr(event, "tool_call_id", "") or ""] = state
+        info._inflight_tool = state
+        SubagentManager._retire_attribution(info)
 
     @staticmethod
     def _note_tool_result(info: SubagentInfo, event: Any) -> None:
-        """Retire the attribution snapshot when a tool's FINAL result arrives.
+        """Retire a call's attribution when its TERMINAL result arrives.
 
         The gate lives here rather than at the call site so the invariant is
         directly testable. ``EVENT_TOOL_RESULT`` is also emitted for
-        non-completed progress updates (``_dispatch`` sets
-        ``tool_final = status == "completed"``), and treating one of those as the
-        end of the tool would drop attribution while the command is still
-        running — degrading liveness to idle-time-only for exactly the long
-        silent command this detection exists to judge, and so raising the badge
-        on a healthy agent. ``acp.client`` gates on the same field.
+        non-terminal progress updates, and treating one of those as the end of
+        the tool would drop attribution while the command is still running —
+        degrading liveness to idle-time-only for exactly the long silent command
+        this detection exists to judge, and so raising the badge on a healthy
+        agent. A failed, cancelled or refused call is over as surely as a
+        completed one, which is the set ``AcpSessionHandle`` retires on too.
+
+        Only the finished call is retired. While the judged call is still
+        running it stays judged; otherwise the slot passes to the most recently
+        dispatched call still running, so a file write returning beside a
+        ``wait`` leaves the reaper judging the wait rather than nothing. A judged
+        native-child call is never in the running set, so this agent's own next
+        terminal result moves the slot off it.
         """
-        if event.tool_final:
-            SubagentManager._clear_tool_dispatch(info)
+        terminal = getattr(event, "tool_status", "") in TERMINAL_TOOL_STATUSES
+        if not (event.tool_final or terminal):
+            return
+        running = info._active_tool_calls
+        running.pop(getattr(event, "tool_call_id", "") or "", None)
+        judged = info._inflight_tool
+        if judged is not None and any(state is judged for state in running.values()):
+            return
+        successor = next(reversed(running.values())) if running else None
+        if successor is judged:
+            return
+        info._inflight_tool = successor
+        SubagentManager._retire_attribution(info)
 
     @staticmethod
     def _clear_tool_dispatch(info: SubagentInfo) -> None:
-        """Drop the in-flight tool snapshot and retire the oracle with it."""
+        """Drop every in-flight tool snapshot and retire the oracle with them.
+
+        Called at the start of each prompt, so a call the previous turn never
+        closed cannot be handed the slot when a later call returns.
+        """
+        info._active_tool_calls.clear()
         info._inflight_tool = None
+        SubagentManager._retire_attribution(info)
+
+    @staticmethod
+    def _retire_attribution(info: SubagentInfo) -> None:
+        """Retire the oracle and bump the generation for a new judged call."""
         oracle = info._stall_oracle
         info._stall_oracle = oracle.fresh() if oracle is not None else None
         info._stall_gen += 1

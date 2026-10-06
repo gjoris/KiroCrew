@@ -2686,6 +2686,10 @@ class RunEventCoordinator(ManagerComponent):
             msg = full_message
             while True:
                 usage.begin(client)
+                # A new prompt starts with nothing in flight. A call the last
+                # attempt or turn never closed would otherwise wait in the
+                # in-flight set and be handed the slot when a later call returns.
+                self._manager._clear_tool_dispatch(info)
                 try:
                     if not use_session_sharing:
                         # Publish the live dedicated PID before every prompt,

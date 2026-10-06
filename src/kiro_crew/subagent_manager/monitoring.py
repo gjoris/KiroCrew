@@ -822,9 +822,9 @@ class OrphanStallMonitor(ManagerComponent):
             # summed RSS counts pages a tree of processes shares once per process.
             # Keyed on the LOCAL generation the recheck below proves current, so a
             # respawn re-captures for its fresh process and a reading of the dead
-            # one is never stamped as the new one's. ``_inflight_tool`` holds one
-            # tool, so a second overlapping tool still running can pass; that
-            # over-counts, which errs toward reserving more.
+            # one is never stamped as the new one's. ``_inflight_tool`` is None
+            # only when none of this agent's own calls is in flight, parallel
+            # ones included.
             tool_before = info._inflight_tool
             stall_before = info._stall_gen
             want_settled = (
