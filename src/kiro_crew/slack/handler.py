@@ -2550,7 +2550,7 @@ async def handle_message(
         # and append a "<5 min left" expiry footer here. The public DefaultDashboard-
         # Contributor returns the text unchanged. Fail-safe: a raising decorator falls
         # back to the undecorated text so it can never break the reply.
-        from kiro_crew.platform import current_context, safe_context_call
+        from kiro_crew.platform import safe_context_call
 
         _pre_decorate = clean_text
         clean_text = safe_context_call(
